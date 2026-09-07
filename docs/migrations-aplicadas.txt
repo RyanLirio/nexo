@@ -1,0 +1,21 @@
+PostgreSQL: 17.10
+Tabelas: [
+  { tablename: 'CheckIn' },
+  { tablename: 'HelpRequest' },
+  { tablename: 'KnowledgeEntry' },
+  { tablename: 'Project' },
+  { tablename: 'ProjectMember' },
+  { tablename: 'Team' },
+  { tablename: 'TeamMember' },
+  { tablename: 'User' },
+  { tablename: '_prisma_migrations' }
+]
+Migrations: [
+  {
+    migration_name: '20260907021217_init',
+    finished_at: 2026-09-07T02:12:17.772Z,
+    rolled_back_at: null,
+    applied_steps_count: 1
+  }
+]
+Chaves estrangeiras: [ { count: '11' } ]

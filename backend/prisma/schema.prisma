@@ -1,0 +1,107 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TeamRole {
+  MEMBER
+  LEADER
+}
+
+enum HelpStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+model User {
+  id             String           @id @default(uuid())
+  name           String
+  email          String           @unique
+  createdAt      DateTime         @default(now())
+  teams          TeamMember[]
+  projects       ProjectMember[]
+  checkIns       CheckIn[]
+  knowledge      KnowledgeEntry[]
+  requests       HelpRequest[]    @relation("Requester")
+  assignedHelp   HelpRequest[]    @relation("Helper")
+}
+
+model Team {
+  id       String       @id @default(uuid())
+  name     String
+  members  TeamMember[]
+  projects Project[]
+}
+
+model TeamMember {
+  teamId String
+  userId String
+  role   TeamRole @default(MEMBER)
+  team   Team     @relation(fields: [teamId], references: [id])
+  user   User     @relation(fields: [userId], references: [id])
+
+  @@id([teamId, userId])
+}
+
+model Project {
+  id           String          @id @default(uuid())
+  name         String
+  teamId       String
+  team         Team            @relation(fields: [teamId], references: [id])
+  members      ProjectMember[]
+  checkIns     CheckIn[]
+  helpRequests HelpRequest[]
+}
+
+model ProjectMember {
+  projectId String
+  userId    String
+  project   Project @relation(fields: [projectId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@id([projectId, userId])
+}
+
+model CheckIn {
+  id           String   @id @default(uuid())
+  userId       String
+  projectId    String
+  createdAt    DateTime @default(now())
+  summary      String
+  difficulties String?
+  nextSteps    String?
+  user         User     @relation(fields: [userId], references: [id])
+  project      Project  @relation(fields: [projectId], references: [id])
+}
+
+model KnowledgeEntry {
+  id                  String   @id @default(uuid())
+  title               String
+  problem             String
+  technology          String?
+  solution            String
+  authorId            String
+  createdAt           DateTime @default(now())
+  // Null significa que o autor ainda não autorizou o compartilhamento.
+  sharingAuthorizedAt DateTime?
+  author              User     @relation(fields: [authorId], references: [id])
+}
+
+model HelpRequest {
+  id          String     @id @default(uuid())
+  requesterId String
+  helperId    String?
+  projectId   String
+  problem     String
+  status      HelpStatus @default(OPEN)
+  createdAt   DateTime   @default(now())
+  requester   User       @relation("Requester", fields: [requesterId], references: [id])
+  helper      User?      @relation("Helper", fields: [helperId], references: [id])
+  project     Project    @relation(fields: [projectId], references: [id])
+}

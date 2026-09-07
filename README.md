@@ -22,7 +22,7 @@ O fluxo planejado para o MVP é: check-in conversacional → registro estruturad
 - **NestJS 11 + TypeScript:** backend, responsável pela API e, futuramente, pelas regras de negócio e permissões.
 - **PostgreSQL 17:** banco relacional.
 - **Prisma 7:** descreve o modelo do banco, gera um cliente TypeScript e gerencia migrations. O adaptador `@prisma/adapter-pg` usa o driver `pg` para conectar ao PostgreSQL.
-- **Git:** histórico local. O GitHub será usado para hospedar o repositório e acompanhar as issues.
+- **Git e GitHub:** histórico do projeto, hospedagem do repositório e acompanhamento das issues.
 
 As versões exatas das dependências ficam nos arquivos `package-lock.json`. Não usamos biblioteca de componentes, autenticação ou IA nesta etapa.
 
@@ -201,16 +201,17 @@ Os resultados efetivamente conferidos e as limitações do ambiente estão em [d
 
 ## Próximos passos e entrega
 
-Os cinco rascunhos de issues estão em [docs/backlog.md](docs/backlog.md), com critérios de aceitação. Ainda precisam ser cadastrados no GitHub.
+As cinco issues do backlog estão cadastradas no GitHub. O documento [docs/backlog.md](docs/backlog.md) permanece como uma visão inicial do planejamento.
 
-Preencha os integrantes, revise a evidência das migrations e crie um repositório vazio chamado `nexo` na conta escolhida pelo grupo. Depois de conferir o destino, configure o remoto e envie a branch:
+O repositório está disponível em [RyanLirio/nexo](https://github.com/RyanLirio/nexo). Para continuar o trabalho local e enviar novas alterações:
 
 ```powershell
-git remote add origin https://github.com/SEU-USUARIO/nexo.git
-git push -u origin main
+git add .
+git commit -m "descricao da alteracao"
+git push
 ```
 
-Substitua `SEU-USUARIO` pelo proprietário correto. O link remoto só existirá depois dessa publicação. Cadastre as issues e inclua o link do repositório e o comprovante das migrations na entrega acadêmica.
+Revise a evidência das migrations e inclua o link do repositório e o comprovante das migrations na entrega acadêmica.
 
 ## Documentação consultada
 

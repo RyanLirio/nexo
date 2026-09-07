@@ -12,9 +12,9 @@ O fluxo planejado para o MVP é: check-in conversacional → registro estruturad
 
 ## Integrantes
 
-- [Nome do integrante 1]
-- [Nome do integrante 2]
-- [Adicionar os demais integrantes]
+- Ryan Lirio — Inteligência Artificial e backend.
+- Gustavo Felicetti — Banco de dados e backend.
+- Wesley de Lima — Frontend.
 
 ## Tecnologias
 

@@ -1,6 +1,6 @@
 # Nexo
 
-Projeto acadêmico de Programação IV do curso de Ciência da Computação da UNOESC. Esta entrega corresponde à **Atividade Prática – Kickoff Estrutural do MVP**.
+Projeto acadêmico de Programação IV do curso de Ciência da Computação da UNOESC. Depois do kickoff estrutural, o repositório passou a conter um protótipo navegável, um modelo de dados v2 e uma primeira API de domínio.
 
 ## Problema e proposta
 
@@ -41,21 +41,34 @@ nexo/
 │   ├── prisma/
 │   │   ├── schema.prisma
 │   │   └── migrations/
+│   ├── scripts/seed.cjs
 │   └── src/
 │       ├── main.ts
 │       ├── app.module.ts
 │       ├── health.controller.ts
-│       └── prisma.service.ts
+│       ├── prisma.service.ts
+│       ├── projects/
+│       ├── check-ins/
+│       ├── knowledge/
+│       └── help-requests/
 ├── frontend/
 │   ├── .env.example
 │   ├── package.json
+│   ├── data/mock-data.ts
 │   └── app/
 │       ├── layout.tsx
 │       ├── page.tsx
-│       └── globals.css
+│       ├── login/
+│       ├── colaborador/
+│       ├── lider/
+│       └── projetos/
 └── docs/
     ├── backlog.md
-    └── verificacao.md
+    ├── verificacao.md
+    ├── modelo-dados-v2.md
+    ├── ux-research.md
+    ├── ux-audit.md
+    └── estado-atual.md
 ```
 
 ## Pré-requisitos
@@ -185,15 +198,13 @@ npm start
 
 Pare o servidor de desenvolvimento antes de executar `npm start`, pois ambos usam a porta 3000.
 
-## Modelo inicial e estado atual
+## Modelo e estado atual
 
-O modelo contém `User`, `Team`, `TeamMember`, `Project`, `ProjectMember`, `CheckIn`, `KnowledgeEntry` e `HelpRequest`. Os vínculos permitem participar de várias equipes e projetos. O papel de líder é definido por equipe. `sharingAuthorizedAt` nulo significa que a solução não foi autorizada para compartilhamento.
+O modelo v2 adiciona `Organization` e `OrganizationMember`, liga equipes à organização e relaciona soluções técnicas ao projeto e, opcionalmente, ao check-in de origem. Veja [o modelo explicado](docs/modelo-dados-v2.md) e [o estado atual](docs/estado-atual.md). A migration v2 deve ser revisada e aplicada em um banco de desenvolvimento antes do seed.
 
-Há uma página de apresentação, uma API de saúde e a configuração do banco. **Não há autenticação, CRUD, conversa com IA, busca ou solicitação de ajuda funcionando.** Os modelos não implementam permissões: a futura API deverá validar acesso às equipes e projetos e exigir autorização antes de compartilhar conhecimento.
+A API oferece rotas iniciais para projetos, check-ins, conhecimento e pedidos de ajuda; seus contratos estão em [docs/estado-atual.md](docs/estado-atual.md). Ela **não tem autenticação**: IDs enviados pelo cliente não provam identidade e não devem ser tratados como permissão de produção.
 
-Não armazenamos dados reais, informações emocionais, diagnósticos ou indicadores individuais de produtividade. Integrações com agenda e ferramentas corporativas ficam fora deste kickoff.
-
-Os resultados efetivamente conferidos e as limitações do ambiente estão em [docs/verificacao.md](docs/verificacao.md).
+O frontend continua usando dados fictícios, sem chamadas à API. Não há IA nem MCP implementados. As decisões de interface estão documentadas em [pesquisa de UX](docs/ux-research.md) e [auditoria](docs/ux-audit.md).
 
 ## Onde continuar
 

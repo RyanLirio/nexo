@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 export default function LoginPage() {
   return (
-    <main className="login-page">
+    <main id="main-content" tabIndex={-1} className="login-page">
       <section className="login-card" aria-labelledby="login-title">
         <div className="login-symbol" aria-hidden="true">✳</div>
         <span className="eyebrow">Bem-vindo ao Nexo</span>

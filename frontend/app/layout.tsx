@@ -11,6 +11,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR">
       <body>
+        <a className="skip-link" href="#main-content">Pular para o conteúdo</a>
         <div className="app-layout">
           <header className="topbar">
             <Link className="brand" href="/" aria-label="Nexo, página inicial">

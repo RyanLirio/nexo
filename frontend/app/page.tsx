@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 export default function Home() {
   return (
-    <main className="landing content">
+    <main id="main-content" tabIndex={-1} className="landing content">
       <div className="landing-copy">
         <span className="eyebrow"><span className="eyebrow-line" /> Seu trabalho, em contexto</span>
         <h1>Menos tempo tentando entender. <em>Mais tempo avançando.</em></h1>

@@ -21,6 +21,7 @@ Este modelo organiza contexto por organização, equipe e projeto. O nome `Check
 - Tabelas de associação registram papéis no contexto certo e evitam um campo “líder” global.
 - `sharingAuthorizedAt = null` significa solução **não compartilhada**. A busca pública do protótipo de API deve consultar apenas entradas autorizadas.
 - `sourceCheckInId` é opcional para permitir registro manual. Não recebe unicidade.
+- A migration coloca equipes antigas em `Nexo Legacy` e preserva seus membros. Soluções antigas sem projeto não podem ser associadas com segurança: a migration interrompe a transação com uma mensagem explícita se encontrar alguma. Nesse caso, Gustavo e a equipe devem mapear esses registros antes de aplicar v2. Nenhum dado é apagado silenciosamente.
 - Índices seguem consultas previstas: equipe por organização, projeto por equipe, check-ins por projeto/autor e data, conhecimento por projeto/autor/autorização, ajuda por projeto/solicitante e status.
 - Como não há autenticação, IDs enviados pelo cliente identificam apenas dados de desenvolvimento. Essas rotas não oferecem segurança contra falsificação de identidade.
 - Fora deste modelo: mensagens de chat, OAuth, embeddings, rankings, indicadores pessoais e MCP.

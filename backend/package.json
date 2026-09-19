@@ -11,7 +11,9 @@
     "prisma:validate": "prisma validate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:status": "prisma migrate status"
+    "prisma:status": "prisma migrate status",
+    "seed": "npm run build && node scripts/seed.cjs",
+    "test": "npm run build && node --test dist/**/*.spec.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

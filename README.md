@@ -152,6 +152,10 @@ npm run start:dev
 
 Abra [http://localhost:3001/health](http://localhost:3001/health). A resposta esperada é `{"status":"ok","database":"ok"}`. O endpoint executa `SELECT 1`; isso verifica a conexão, mas não substitui a conferência das migrations e tabelas.
 
+### Dados fictícios para desenvolvimento
+
+Depois de aplicar as migrations em um banco de desenvolvimento, execute `npm run seed` dentro de `backend`. O comando compila o projeto e cria/atualiza uma organização, equipe, três pessoas, três projetos, check-ins, duas soluções (uma autorizada e outra privada) e um pedido de ajuda. Os identificadores são fixos para que a execução seja repetível. Não execute o seed em um banco com dados de produção.
+
 Para compilar e executar a versão compilada:
 
 ```powershell

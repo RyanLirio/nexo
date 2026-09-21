@@ -36,21 +36,34 @@ enum HelpStatus {
   RESOLVED
 }
 
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
 model User {
-  id                  String               @id @default(uuid())
-  name                String
-  email               String               @unique
-  googleSubject       String?              @unique
-  avatarUrl           String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @default(now()) @updatedAt
-  organizations       OrganizationMember[]
-  teams               TeamMember[]
-  projects            ProjectMember[]
-  checkIns            CheckIn[]
-  knowledge           KnowledgeEntry[]
-  requests            HelpRequest[]        @relation("Requester")
-  assignedHelp        HelpRequest[]        @relation("Helper")
+  id                   String               @id @default(uuid())
+  name                 String
+  email                String               @unique
+  googleSubject        String?              @unique
+  avatarUrl            String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @default(now()) @updatedAt
+  organizations        OrganizationMember[]
+  teams                TeamMember[]
+  projects             ProjectMember[]
+  createdProjects      Project[]            @relation("ProjectCreator")
+  ledProjects          Project[]            @relation("ProjectLeader")
+  responsibleProjects  Project[]            @relation("ProjectResponsible")
+  conversations        Conversation[]
+  messages             Message[]
+  checkIns             CheckIn[]
+  knowledge            KnowledgeEntry[]     @relation("KnowledgeAuthor")
+  authorizedKnowledge  KnowledgeEntry[]     @relation("KnowledgeAuthorizer")
+  requests             HelpRequest[]        @relation("Requester")
+  assignedHelp         HelpRequest[]        @relation("Helper")
+  helpRequestMessages  HelpRequestMessage[]
+  statusChanges        ProjectStatusHistory[]
 }
 
 model Organization {
@@ -102,20 +115,30 @@ model TeamMember {
 }
 
 model Project {
-  id           String           @id @default(uuid())
-  name         String
-  description  String?
-  status       ProjectStatus    @default(ACTIVE)
-  teamId       String
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @default(now()) @updatedAt
-  team         Team             @relation(fields: [teamId], references: [id])
-  members      ProjectMember[]
-  checkIns     CheckIn[]
-  knowledge    KnowledgeEntry[]
-  helpRequests HelpRequest[]
+  id                String                 @id @default(uuid())
+  name              String
+  description       String?
+  status            ProjectStatus          @default(ACTIVE)
+  teamId            String
+  leaderId          String?
+  responsibleUserId String?
+  createdBy         String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @default(now()) @updatedAt
+  team              Team                   @relation(fields: [teamId], references: [id])
+  leader            User?                  @relation("ProjectLeader", fields: [leaderId], references: [id])
+  responsibleUser   User?                  @relation("ProjectResponsible", fields: [responsibleUserId], references: [id])
+  creator           User?                  @relation("ProjectCreator", fields: [createdBy], references: [id])
+  members           ProjectMember[]
+  conversations     ConversationProject[]
+  checkIns          CheckIn[]
+  knowledge         KnowledgeEntry[]
+  helpRequests      HelpRequest[]
+  statusHistory     ProjectStatusHistory[]
 
   @@index([teamId])
+  @@index([leaderId])
+  @@index([responsibleUserId])
 }
 
 model ProjectMember {
@@ -130,6 +153,43 @@ model ProjectMember {
   @@index([userId])
 }
 
+model Conversation {
+  id        String                @id @default(uuid())
+  userId    String
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @default(now()) @updatedAt
+  user      User                  @relation(fields: [userId], references: [id])
+  projects  ConversationProject[]
+  messages  Message[]
+
+  @@index([userId])
+}
+
+model ConversationProject {
+  conversationId String
+  projectId      String
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, projectId])
+  @@index([projectId])
+}
+
+model Message {
+  id              String           @id @default(uuid())
+  conversationId  String
+  senderId        String?
+  role            MessageRole      @default(USER)
+  content         String
+  createdAt       DateTime         @default(now())
+  conversation    Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender          User?            @relation(fields: [senderId], references: [id])
+  checkInMessages CheckInMessage[]
+
+  @@index([conversationId, createdAt])
+}
+
 model CheckIn {
   id               String           @id @default(uuid())
   userId           String
@@ -141,49 +201,102 @@ model CheckIn {
   updatedAt        DateTime         @default(now()) @updatedAt
   user             User             @relation(fields: [userId], references: [id])
   project          Project          @relation(fields: [projectId], references: [id])
+  messages         CheckInMessage[]
   knowledgeEntries KnowledgeEntry[]
 
   @@index([projectId, createdAt])
   @@index([userId, createdAt])
 }
 
+model CheckInMessage {
+  checkInId String
+  messageId String
+  createdAt DateTime @default(now())
+  checkIn   CheckIn  @relation(fields: [checkInId], references: [id], onDelete: Cascade)
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@id([checkInId, messageId])
+  @@index([messageId])
+}
+
+model ProjectStatusHistory {
+  id             String        @id @default(uuid())
+  projectId      String
+  previousStatus ProjectStatus
+  newStatus      ProjectStatus
+  changedById    String
+  reason         String?
+  createdAt      DateTime      @default(now())
+  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  changedBy      User          @relation(fields: [changedById], references: [id])
+
+  @@index([projectId, createdAt])
+}
+
 model KnowledgeEntry {
-  id                  String   @id @default(uuid())
+  id                  String       @id @default(uuid())
   projectId           String
   sourceCheckInId     String?
+  sourceHelpRequestId String?
   authorId            String
+  sharingAuthorizedBy String?
   title               String
   problem             String
   technology          String?
   solution            String
   sharingAuthorizedAt DateTime?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @default(now()) @updatedAt
-  project             Project  @relation(fields: [projectId], references: [id])
-  sourceCheckIn       CheckIn? @relation(fields: [sourceCheckInId], references: [id])
-  author              User     @relation(fields: [authorId], references: [id])
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @default(now()) @updatedAt
+  project             Project      @relation(fields: [projectId], references: [id])
+  sourceCheckIn       CheckIn?     @relation(fields: [sourceCheckInId], references: [id])
+  sourceHelpRequest   HelpRequest? @relation(fields: [sourceHelpRequestId], references: [id])
+  author              User         @relation("KnowledgeAuthor", fields: [authorId], references: [id])
+  authorizer          User?        @relation("KnowledgeAuthorizer", fields: [sharingAuthorizedBy], references: [id])
 
   @@index([projectId])
   @@index([sourceCheckInId])
+  @@index([sourceHelpRequestId])
   @@index([authorId])
+  @@index([sharingAuthorizedBy])
   @@index([sharingAuthorizedAt])
 }
 
 model HelpRequest {
-  id          String     @id @default(uuid())
-  requesterId String
-  helperId    String?
-  projectId   String
-  problem     String
-  status      HelpStatus @default(OPEN)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @default(now()) @updatedAt
-  resolvedAt  DateTime?
-  requester   User       @relation("Requester", fields: [requesterId], references: [id])
-  helper      User?      @relation("Helper", fields: [helperId], references: [id])
-  project     Project    @relation(fields: [projectId], references: [id])
+  id                    String               @id @default(uuid())
+  requesterId           String
+  helperId              String?
+  projectId             String
+  problem               String
+  status                HelpStatus           @default(OPEN)
+  resolutionMessageId   String?
+  confirmationMessageId String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @default(now()) @updatedAt
+  resolvedAt            DateTime?
+  requester             User                 @relation("Requester", fields: [requesterId], references: [id])
+  helper                User?                @relation("Helper", fields: [helperId], references: [id])
+  project               Project              @relation(fields: [projectId], references: [id])
+  resolutionMessage     HelpRequestMessage?  @relation("HelpResolution", fields: [resolutionMessageId], references: [id])
+  confirmationMessage   HelpRequestMessage?  @relation("HelpConfirmation", fields: [confirmationMessageId], references: [id])
+  messages              HelpRequestMessage[] @relation("HelpMessages")
+  knowledgeEntries      KnowledgeEntry[]
 
   @@index([projectId, status])
   @@index([requesterId, status])
   @@index([helperId])
+  @@index([resolutionMessageId])
+}
+
+model HelpRequestMessage {
+  id            String        @id @default(uuid())
+  helpRequestId String
+  senderId      String
+  content       String
+  createdAt     DateTime      @default(now())
+  helpRequest   HelpRequest   @relation("HelpMessages", fields: [helpRequestId], references: [id], onDelete: Cascade)
+  sender        User          @relation(fields: [senderId], references: [id])
+  resolutions   HelpRequest[] @relation("HelpResolution")
+  confirmations HelpRequest[] @relation("HelpConfirmation")
+
+  @@index([helpRequestId, createdAt])
 }

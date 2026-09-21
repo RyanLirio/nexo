@@ -5,6 +5,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CheckInsService } from './check-ins/check-ins.service';
 import { HelpRequestsService } from './help-requests/help-requests.service';
 import { KnowledgeService } from './knowledge/knowledge.service';
+import { ProjectsService } from './projects/projects.service';
 import { PrismaService } from './prisma.service';
 
 test('cria check-in quando a pessoa participa do projeto', async () => {
@@ -47,6 +48,113 @@ test('busca de conhecimento exige autorização de compartilhamento', async () =
 
   assert.deepEqual(filter?.sharingAuthorizedAt, { not: null });
   assert.ok(Array.isArray(filter?.OR));
+});
+
+test('rejeita criação de conhecimento com duas origens simultâneas', async () => {
+  const database = {
+    project: { findUnique: async () => ({ id: 'project-1' }) },
+    projectMember: { findUnique: async () => ({ userId: 'user-1' }) },
+  } as unknown as PrismaService;
+  const service = new KnowledgeService(database);
+
+  await assert.rejects(
+    service.create({
+      projectId: 'project-1',
+      authorId: 'user-1',
+      title: 'Solução Conflitante',
+      problem: 'Problema',
+      solution: 'Solução',
+      sourceCheckInId: 'checkin-1',
+      sourceHelpRequestId: 'help-1',
+    }),
+    BadRequestException,
+  );
+});
+
+test('autorização de conhecimento preenche autorizador e timestamp juntos', async () => {
+  let updateData: Record<string, unknown> | undefined;
+  const database = {
+    knowledgeEntry: {
+      findUnique: async () => ({ id: 'know-1', authorId: 'user-1', sharingAuthorizedAt: null }),
+      update: async (input: { data: Record<string, unknown> }) => { updateData = input.data; return input.data; },
+    },
+  } as unknown as PrismaService;
+  const service = new KnowledgeService(database);
+
+  await service.authorize('know-1', { authorId: 'user-1' });
+
+  assert.equal(updateData?.sharingAuthorizedBy, 'user-1');
+  assert.ok(updateData?.sharingAuthorizedAt instanceof Date);
+});
+
+test('criação de projeto rejeita líder que não pertence ao time', async () => {
+  const database = {
+    team: { findUnique: async () => ({ id: 'team-1' }) },
+    teamMember: { findUnique: async () => null },
+  } as unknown as PrismaService;
+  const service = new ProjectsService(database);
+
+  await assert.rejects(
+    service.create({
+      teamId: 'team-1',
+      name: 'Projeto Automação',
+      leaderId: 'user-externo',
+    }),
+    BadRequestException,
+  );
+});
+
+test('criação de projeto rejeita líder com papel MEMBER no time', async () => {
+  const database = {
+    team: { findUnique: async () => ({ id: 'team-1' }) },
+    teamMember: { findUnique: async () => ({ userId: 'user-member', role: 'MEMBER' }) },
+  } as unknown as PrismaService;
+  const service = new ProjectsService(database);
+
+  await assert.rejects(
+    service.create({
+      teamId: 'team-1',
+      name: 'Projeto Automação',
+      leaderId: 'user-member',
+    }),
+    BadRequestException,
+  );
+});
+
+test('criação de projeto aceita líder com papel LEADER e cadastra responsável', async () => {
+  let projectCreated: Record<string, unknown> | undefined;
+  const database = {
+    team: { findUnique: async () => ({ id: 'team-1' }) },
+    teamMember: {
+      findUnique: async (input: { where: { teamId_userId: { userId: string } } }) => {
+        if (input.where.teamId_userId.userId === 'user-leader') {
+          return { userId: 'user-leader', role: 'LEADER' };
+        }
+        if (input.where.teamId_userId.userId === 'user-resp') {
+          return { userId: 'user-resp', role: 'MEMBER' };
+        }
+        return null;
+      },
+    },
+    project: {
+      create: async (input: { data: Record<string, unknown> }) => {
+        projectCreated = input.data;
+        return { id: 'proj-123', ...input.data };
+      },
+    },
+  } as unknown as PrismaService;
+  const service = new ProjectsService(database);
+
+  const result = await service.create({
+    teamId: 'team-1',
+    name: 'Projeto Automação',
+    leaderId: 'user-leader',
+    responsibleUserId: 'user-resp',
+  });
+
+  assert.equal(result.id, 'proj-123');
+  assert.equal(projectCreated?.leaderId, 'user-leader');
+  assert.equal(projectCreated?.responsibleUserId, 'user-resp');
 });
 
 test('pedido de ajuda aceita avanço e rejeita retorno após resolução', async () => {

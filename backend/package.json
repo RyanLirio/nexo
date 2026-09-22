@@ -13,7 +13,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:status": "prisma migrate status",
     "seed": "npm run build && node scripts/seed.cjs",
-    "test": "npm run build && node --test dist/domain.spec.js"
+    "test": "npm run build && node --test \"dist/**/*.spec.js\""
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

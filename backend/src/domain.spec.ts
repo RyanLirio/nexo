@@ -10,14 +10,14 @@ import { PrismaService } from './prisma.service';
 
 test('cria check-in quando a pessoa participa do projeto', async () => {
   let saved: unknown;
-  const database = {
-    project: { findUnique: async () => ({ id: 'project-1' }) },
-    projectMember: { findUnique: async () => ({ userId: 'user-1' }) },
-    checkIn: { create: async (input: { data: unknown }) => { saved = input.data; return input.data; } },
-  } as unknown as PrismaService;
-  const service = new CheckInsService(database);
+  const repo = {
+    projectExists: async () => true,
+    isProjectMember: async () => true,
+    create: async (data: unknown) => { saved = data; return data as any; },
+  } as unknown as import('./check-ins/check-in.repository').CheckInRepository;
+  const service = new CheckInsService(repo);
 
-  await service.create('project-1', { userId: 'user-1', summary: '  Avancei na integração  ', nextSteps: 'Revisar testes' });
+  await service.create('project-1', { userId: 'user-1', summary: '  Avancei na integração  ', nextSteps: 'Revisar testes', messageIds: ['msg-1'] });
 
   assert.deepEqual(saved, {
     projectId: 'project-1',
@@ -25,12 +25,15 @@ test('cria check-in quando a pessoa participa do projeto', async () => {
     summary: 'Avancei na integração',
     difficulties: null,
     nextSteps: 'Revisar testes',
+    messageIds: ['msg-1'],
   });
 });
 
 test('não cria check-in em projeto inexistente', async () => {
-  const database = { project: { findUnique: async () => null } } as unknown as PrismaService;
-  const service = new CheckInsService(database);
+  const repo = {
+    projectExists: async () => false,
+  } as unknown as import('./check-ins/check-in.repository').CheckInRepository;
+  const service = new CheckInsService(repo);
   await assert.rejects(
     service.create('missing', { userId: 'user-1', summary: 'Avanço' }),
     NotFoundException,

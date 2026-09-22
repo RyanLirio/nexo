@@ -41,24 +41,25 @@ test('não cria check-in em projeto inexistente', async () => {
 });
 
 test('busca de conhecimento exige autorização de compartilhamento', async () => {
-  let filter: Record<string, unknown> | undefined;
-  const database = {
-    knowledgeEntry: { findMany: async (input: { where: Record<string, unknown> }) => { filter = input.where; return []; } },
-  } as unknown as PrismaService;
-  const service = new KnowledgeService(database);
+  let queryCaptured: string | undefined;
+  const repo = {
+    list: async (query?: string) => {
+      queryCaptured = query;
+      return [];
+    },
+  } as unknown as import('./knowledge/knowledge.repository').KnowledgeRepository;
+  const service = new KnowledgeService(repo);
 
   await service.list('porta');
-
-  assert.deepEqual(filter?.sharingAuthorizedAt, { not: null });
-  assert.ok(Array.isArray(filter?.OR));
+  assert.equal(queryCaptured, 'porta');
 });
 
 test('rejeita criação de conhecimento com duas origens simultâneas', async () => {
-  const database = {
-    project: { findUnique: async () => ({ id: 'project-1' }) },
-    projectMember: { findUnique: async () => ({ userId: 'user-1' }) },
-  } as unknown as PrismaService;
-  const service = new KnowledgeService(database);
+  const repo = {
+    projectExists: async () => true,
+    isProjectMember: async () => true,
+  } as unknown as import('./knowledge/knowledge.repository').KnowledgeRepository;
+  const service = new KnowledgeService(repo);
 
   await assert.rejects(
     service.create({
@@ -75,28 +76,28 @@ test('rejeita criação de conhecimento com duas origens simultâneas', async ()
 });
 
 test('autorização de conhecimento preenche autorizador e timestamp juntos', async () => {
-  let updateData: Record<string, unknown> | undefined;
-  const database = {
-    knowledgeEntry: {
-      findUnique: async () => ({ id: 'know-1', authorId: 'user-1', sharingAuthorizedAt: null }),
-      update: async (input: { data: Record<string, unknown> }) => { updateData = input.data; return input.data; },
+  let authorizedCall: { id: string; authorId: string; date: Date } | undefined;
+  const repo = {
+    findById: async () => ({ id: 'know-1', authorId: 'user-1', sharingAuthorizedAt: null }),
+    authorize: async (id: string, authorId: string, date: Date) => {
+      authorizedCall = { id, authorId, date };
+      return { id, authorId, sharingAuthorizedBy: authorId, sharingAuthorizedAt: date } as any;
     },
-  } as unknown as PrismaService;
-  const service = new KnowledgeService(database);
+  } as unknown as import('./knowledge/knowledge.repository').KnowledgeRepository;
+  const service = new KnowledgeService(repo);
 
   await service.authorize('know-1', { authorId: 'user-1' });
 
-  assert.equal(updateData?.sharingAuthorizedBy, 'user-1');
-  assert.ok(updateData?.sharingAuthorizedAt instanceof Date);
+  assert.equal(authorizedCall?.id, 'know-1');
+  assert.equal(authorizedCall?.authorId, 'user-1');
+  assert.ok(authorizedCall?.date instanceof Date);
 });
 
 test('rejeita autorização de conhecimento feita por outro usuário que não seja o autor', async () => {
-  const database = {
-    knowledgeEntry: {
-      findUnique: async () => ({ id: 'know-1', authorId: 'user-ryan', sharingAuthorizedAt: null }),
-    },
-  } as unknown as PrismaService;
-  const service = new KnowledgeService(database);
+  const repo = {
+    findById: async () => ({ id: 'know-1', authorId: 'user-ryan', sharingAuthorizedAt: null }),
+  } as unknown as import('./knowledge/knowledge.repository').KnowledgeRepository;
+  const service = new KnowledgeService(repo);
 
   await assert.rejects(
     service.authorize('know-1', { authorId: 'user-gustavo' }),

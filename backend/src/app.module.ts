@@ -14,10 +14,11 @@ import { UsersModule } from './users/users.module';
 import { TeamsModule } from './teams/teams.module';
 import { ProjectsModule } from './projects/projects.module';
 import { CheckInsModule } from './check-ins/check-ins.module';
+import { KnowledgeModule } from './knowledge/knowledge.module';
 
 @Module({
-  imports: [UsersModule, TeamsModule, ProjectsModule, CheckInsModule],
-  controllers: [HealthController, KnowledgeController, HelpRequestsController],
-  providers: [PrismaService, KnowledgeService, HelpRequestsService],
+  imports: [UsersModule, TeamsModule, ProjectsModule, CheckInsModule, KnowledgeModule],
+  controllers: [HealthController, HelpRequestsController],
+  providers: [PrismaService, HelpRequestsService],
 })
 export class AppModule {}

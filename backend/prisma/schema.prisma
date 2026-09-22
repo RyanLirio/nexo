@@ -62,7 +62,6 @@ model User {
   authorizedKnowledge  KnowledgeEntry[]     @relation("KnowledgeAuthorizer")
   requests             HelpRequest[]        @relation("Requester")
   assignedHelp         HelpRequest[]        @relation("Helper")
-  helpRequestMessages  HelpRequestMessage[]
   statusChanges        ProjectStatusHistory[]
 }
 
@@ -262,41 +261,22 @@ model KnowledgeEntry {
 }
 
 model HelpRequest {
-  id                    String               @id @default(uuid())
-  requesterId           String
-  helperId              String?
-  projectId             String
-  problem               String
-  status                HelpStatus           @default(OPEN)
-  resolutionMessageId   String?
-  confirmationMessageId String?
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @default(now()) @updatedAt
-  resolvedAt            DateTime?
-  requester             User                 @relation("Requester", fields: [requesterId], references: [id])
-  helper                User?                @relation("Helper", fields: [helperId], references: [id])
-  project               Project              @relation(fields: [projectId], references: [id])
-  resolutionMessage     HelpRequestMessage?  @relation("HelpResolution", fields: [resolutionMessageId], references: [id])
-  confirmationMessage   HelpRequestMessage?  @relation("HelpConfirmation", fields: [confirmationMessageId], references: [id])
-  messages              HelpRequestMessage[] @relation("HelpMessages")
-  knowledgeEntries      KnowledgeEntry[]
+  id               String           @id @default(uuid())
+  requesterId      String
+  helperId         String?
+  projectId        String
+  problem          String
+  status           HelpStatus       @default(OPEN)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @default(now()) @updatedAt
+  resolvedAt       DateTime?
+  requester        User             @relation("Requester", fields: [requesterId], references: [id])
+  helper           User?            @relation("Helper", fields: [helperId], references: [id])
+  project          Project          @relation(fields: [projectId], references: [id])
+  knowledgeEntries KnowledgeEntry[]
 
   @@index([projectId, status])
   @@index([requesterId, status])
   @@index([helperId])
-  @@index([resolutionMessageId])
 }
 
-model HelpRequestMessage {
-  id            String        @id @default(uuid())
-  helpRequestId String
-  senderId      String
-  content       String
-  createdAt     DateTime      @default(now())
-  helpRequest   HelpRequest   @relation("HelpMessages", fields: [helpRequestId], references: [id], onDelete: Cascade)
-  sender        User          @relation(fields: [senderId], references: [id])
-  resolutions   HelpRequest[] @relation("HelpResolution")
-  confirmations HelpRequest[] @relation("HelpConfirmation")
-
-  @@index([helpRequestId, createdAt])
-}

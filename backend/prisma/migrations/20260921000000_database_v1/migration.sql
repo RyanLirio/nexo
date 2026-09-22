@@ -63,24 +63,6 @@ CREATE TABLE "ProjectStatusHistory" (
 );
 CREATE INDEX "ProjectStatusHistory_projectId_createdAt_idx" ON "ProjectStatusHistory"("projectId","createdAt");
 
--- Mensagens de pedidos de ajuda
-CREATE TABLE "HelpRequestMessage" (
-    "id" TEXT NOT NULL,
-    "helpRequestId" TEXT NOT NULL,
-    "senderId" TEXT NOT NULL,
-    "content" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "HelpRequestMessage_pkey" PRIMARY KEY ("id")
-);
-CREATE INDEX "HelpRequestMessage_helpRequestId_createdAt_idx" ON "HelpRequestMessage"("helpRequestId","createdAt");
-
--- Alterações na tabela HelpRequest
-ALTER TABLE "HelpRequest"
-    ADD COLUMN "resolutionMessageId" TEXT,
-    ADD COLUMN "confirmationMessageId" TEXT;
-
-CREATE INDEX "HelpRequest_resolutionMessageId_idx" ON "HelpRequest"("resolutionMessageId");
-
 -- Alterações na tabela KnowledgeEntry
 ALTER TABLE "KnowledgeEntry"
     ADD COLUMN "sourceHelpRequestId" TEXT,
@@ -113,14 +95,6 @@ ALTER TABLE "CheckInMessage"
 ALTER TABLE "ProjectStatusHistory"
     ADD CONSTRAINT "ProjectStatusHistory_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE,
     ADD CONSTRAINT "ProjectStatusHistory_changedById_fkey" FOREIGN KEY ("changedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
-ALTER TABLE "HelpRequestMessage"
-    ADD CONSTRAINT "HelpRequestMessage_helpRequestId_fkey" FOREIGN KEY ("helpRequestId") REFERENCES "HelpRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    ADD CONSTRAINT "HelpRequestMessage_senderId_fkey" FOREIGN KEY ("senderId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
-ALTER TABLE "HelpRequest"
-    ADD CONSTRAINT "HelpRequest_resolutionMessageId_fkey" FOREIGN KEY ("resolutionMessageId") REFERENCES "HelpRequestMessage"("id") ON DELETE SET NULL ON UPDATE CASCADE,
-    ADD CONSTRAINT "HelpRequest_confirmationMessageId_fkey" FOREIGN KEY ("confirmationMessageId") REFERENCES "HelpRequestMessage"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 ALTER TABLE "KnowledgeEntry"
     ADD CONSTRAINT "KnowledgeEntry_sourceHelpRequestId_fkey" FOREIGN KEY ("sourceHelpRequestId") REFERENCES "HelpRequest"("id") ON DELETE SET NULL ON UPDATE CASCADE,

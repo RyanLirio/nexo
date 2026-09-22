@@ -184,7 +184,7 @@ async function seed() {
       },
     });
 
-    // 8. HelpRequest com Mensagens de Discussão e Resolução
+    // 8. HelpRequest (Estrutura mínima de suporte/dificuldade no projeto)
     await db.helpRequest.upsert({
       where: { id: 'demo-help-ssl' },
       update: {
@@ -201,34 +201,6 @@ async function seed() {
         status: 'RESOLVED',
         resolvedAt: demoDate,
         createdAt: demoDate,
-      },
-    });
-
-    const helpMessages = [
-      { id: 'demo-help-msg-1', senderId: 'demo-ryan', content: 'Alguém tem o comando para renovar o certificado no servidor?' },
-      { id: 'demo-help-msg-2', senderId: 'demo-gustavo', content: 'Execute certbot renew --force-renewal e reinicie o nginx.' },
-      { id: 'demo-help-msg-3', senderId: 'demo-ryan', content: 'Perfeito Gustavo, o comando funcionou e os testes passaram!' },
-    ];
-
-    for (const hm of helpMessages) {
-      await db.helpRequestMessage.upsert({
-        where: { id: hm.id },
-        update: { content: hm.content },
-        create: {
-          id: hm.id,
-          helpRequestId: 'demo-help-ssl',
-          senderId: hm.senderId,
-          content: hm.content,
-          createdAt: demoDate,
-        },
-      });
-    }
-
-    await db.helpRequest.update({
-      where: { id: 'demo-help-ssl' },
-      data: {
-        resolutionMessageId: 'demo-help-msg-2',
-        confirmationMessageId: 'demo-help-msg-3',
       },
     });
 

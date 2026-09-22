@@ -15,10 +15,18 @@ import { TeamsModule } from './teams/teams.module';
 import { ProjectsModule } from './projects/projects.module';
 import { CheckInsModule } from './check-ins/check-ins.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
+import { HelpRequestsModule } from './help-requests/help-requests.module';
 
 @Module({
-  imports: [UsersModule, TeamsModule, ProjectsModule, CheckInsModule, KnowledgeModule],
-  controllers: [HealthController, HelpRequestsController],
-  providers: [PrismaService, HelpRequestsService],
+  imports: [
+    UsersModule,
+    TeamsModule,
+    ProjectsModule,
+    CheckInsModule,
+    KnowledgeModule,
+    HelpRequestsModule,
+  ],
+  controllers: [HealthController],
+  providers: [PrismaService],
 })
 export class AppModule {}

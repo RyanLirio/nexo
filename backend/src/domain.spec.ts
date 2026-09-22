@@ -194,17 +194,20 @@ test('alteração de status de projeto grava auditoria e valida status válidos'
 });
 
 test('pedido de ajuda aceita avanço e rejeita retorno após resolução', async () => {
-  let updated: Record<string, unknown> | undefined;
-  const database = {
-    helpRequest: {
-      findUnique: async ({ where }: { where: { id: string } }) =>
-        ({ id: where.id, status: where.id === 'resolved' ? 'RESOLVED' : 'OPEN' }),
-      update: async (input: { data: Record<string, unknown> }) => { updated = input.data; return input.data; },
+  let updatedData: { id: string; status: string; resolvedAt: Date | null } | undefined;
+  const repo = {
+    findById: async (id: string) => ({
+      id,
+      status: id === 'resolved' ? 'RESOLVED' : 'OPEN',
+    }),
+    updateStatus: async (id: string, status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED', resolvedAt: Date | null) => {
+      updatedData = { id, status, resolvedAt };
+      return { id, status, resolvedAt } as any;
     },
-  } as unknown as PrismaService;
-  const service = new HelpRequestsService(database);
+  } as unknown as import('./help-requests/help-request.repository').HelpRequestRepository;
+  const service = new HelpRequestsService(repo);
 
   await service.changeStatus('open', { status: 'IN_PROGRESS' });
-  assert.deepEqual(updated, { status: 'IN_PROGRESS', resolvedAt: null });
+  assert.deepEqual(updatedData, { id: 'open', status: 'IN_PROGRESS', resolvedAt: null });
   await assert.rejects(service.changeStatus('resolved', { status: 'OPEN' }), BadRequestException);
 });

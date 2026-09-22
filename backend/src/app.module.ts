@@ -11,9 +11,10 @@ import { HelpRequestsController } from './help-requests/help-requests.controller
 import { HelpRequestsService } from './help-requests/help-requests.service';
 
 import { UsersModule } from './users/users.module';
+import { TeamsModule } from './teams/teams.module';
 
 @Module({
-  imports: [UsersModule],
+  imports: [UsersModule, TeamsModule],
   controllers: [HealthController, ProjectsController, CheckInsController, KnowledgeController, HelpRequestsController],
   providers: [PrismaService, ProjectsService, CheckInsService, KnowledgeService, HelpRequestsService],
 })

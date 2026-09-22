@@ -155,6 +155,12 @@ test('criação de projeto aceita líder com papel LEADER e cadastra responsáve
   assert.equal(result.id, 'proj-123');
   assert.equal(projectCreated?.leaderId, 'user-leader');
   assert.equal(projectCreated?.responsibleUserId, 'user-resp');
+  assert.deepEqual(projectCreated?.members, {
+    create: [
+      { userId: 'user-leader', role: 'OWNER' },
+      { userId: 'user-resp', role: 'MEMBER' },
+    ],
+  });
 });
 
 test('pedido de ajuda aceita avanço e rejeita retorno após resolução', async () => {

@@ -76,6 +76,14 @@ export class ProjectsService {
       if (!responsibleMember) throw new BadRequestException('O responsável deve pertencer à mesma equipe do projeto.');
     }
 
+    const membersToCreate: { userId: string; role: 'OWNER' | 'MEMBER' }[] = [];
+    if (leaderId) {
+      membersToCreate.push({ userId: leaderId, role: 'OWNER' });
+    }
+    if (responsibleUserId && responsibleUserId !== leaderId) {
+      membersToCreate.push({ userId: responsibleUserId, role: 'MEMBER' });
+    }
+
     return this.prisma.project.create({
       data: {
         teamId,
@@ -84,9 +92,9 @@ export class ProjectsService {
         leaderId,
         responsibleUserId,
         createdBy,
-        ...(responsibleUserId ? {
+        ...(membersToCreate.length > 0 ? {
           members: {
-            create: { userId: responsibleUserId, role: 'OWNER' },
+            create: membersToCreate,
           },
         } : {}),
       },

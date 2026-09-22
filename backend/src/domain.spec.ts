@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CheckInsService } from './check-ins/check-ins.service';
 import { HelpRequestsService } from './help-requests/help-requests.service';
 import { KnowledgeService } from './knowledge/knowledge.service';
@@ -85,6 +85,20 @@ test('autorização de conhecimento preenche autorizador e timestamp juntos', as
 
   assert.equal(updateData?.sharingAuthorizedBy, 'user-1');
   assert.ok(updateData?.sharingAuthorizedAt instanceof Date);
+});
+
+test('rejeita autorização de conhecimento feita por outro usuário que não seja o autor', async () => {
+  const database = {
+    knowledgeEntry: {
+      findUnique: async () => ({ id: 'know-1', authorId: 'user-ryan', sharingAuthorizedAt: null }),
+    },
+  } as unknown as PrismaService;
+  const service = new KnowledgeService(database);
+
+  await assert.rejects(
+    service.authorize('know-1', { authorId: 'user-gustavo' }),
+    ForbiddenException,
+  );
 });
 
 test('criação de projeto rejeita líder que não pertence ao time', async () => {

@@ -237,7 +237,7 @@ async function seed() {
       where: { id: 'demo-know-ssl' },
       update: {
         title: 'Renovação forçada de certificado SSL homologação',
-        sharingAuthorizedBy: 'demo-gustavo',
+        sharingAuthorizedBy: 'demo-ryan',
         sharingAuthorizedAt: demoDate,
       },
       create: {
@@ -249,7 +249,7 @@ async function seed() {
         problem: 'Erro de SSL no gateway financeiro devido a certificado expirado.',
         technology: 'SSL/TLS',
         solution: 'Executar certbot renew --force-renewal e reiniciar o proxy/servidor web.',
-        sharingAuthorizedBy: 'demo-gustavo',
+        sharingAuthorizedBy: 'demo-ryan',
         sharingAuthorizedAt: demoDate,
         createdAt: demoDate,
       },

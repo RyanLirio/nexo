@@ -1,78 +1,55 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
+import { ProjectMemberRecord, ProjectRecord, ProjectRepository } from './project.repository';
 import { fields, optionalText, requiredText } from '../request-fields';
+
+const VALID_PROJECT_STATUSES = ['PLANNING', 'ACTIVE', 'PAUSED', 'COMPLETED'];
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly projectRepo: ProjectRepository) {}
 
-  async getById(id: string) {
-    const project = await this.prisma.project.findUnique({
-      where: { id },
-      include: {
-        team: { select: { id: true, name: true, organizationId: true } },
-        leader: { select: { id: true, name: true } },
-        responsibleUser: { select: { id: true, name: true } },
-        members: { include: { user: { select: { id: true, name: true } } } },
-        checkIns: { orderBy: { createdAt: 'desc' }, take: 1 },
-      },
-    });
+  async getById(id: string): Promise<any> {
+    const project = await this.projectRepo.findById(id);
     if (!project) throw new NotFoundException('Projeto não encontrado.');
     return project;
   }
 
-  async listByUser(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
-    if (!user) throw new NotFoundException('Usuário não encontrado.');
-    return this.prisma.project.findMany({
-      where: { members: { some: { userId } } },
-      include: {
-        team: { select: { id: true, name: true } },
-        leader: { select: { id: true, name: true } },
-        responsibleUser: { select: { id: true, name: true } },
-        checkIns: { orderBy: { createdAt: 'desc' }, take: 1 },
-      },
-      orderBy: { name: 'asc' },
-    });
+  async list(filter?: { teamId?: string; status?: string; userId?: string }): Promise<any[]> {
+    return this.projectRepo.list(filter);
   }
 
-  async listByTeam(teamId: string) {
-    const team = await this.prisma.team.findUnique({ where: { id: teamId }, select: { id: true } });
+  async listByUser(userId: string): Promise<any[]> {
+    return this.projectRepo.list({ userId });
+  }
+
+  async listByTeam(teamId: string): Promise<any[]> {
+    const team = await this.projectRepo.findTeam(teamId);
     if (!team) throw new NotFoundException('Equipe não encontrada.');
-    return this.prisma.project.findMany({
-      where: { teamId },
-      include: {
-        leader: { select: { id: true, name: true } },
-        responsibleUser: { select: { id: true, name: true } },
-      },
-      orderBy: { name: 'asc' },
-    });
+    return this.projectRepo.list({ teamId });
   }
 
-  async create(value: unknown) {
+  async create(value: unknown, createdByUserId?: string): Promise<ProjectRecord> {
     const body = fields(value);
     const teamId = requiredText(body, 'teamId', 100);
     const name = requiredText(body, 'name', 160);
     const description = optionalText(body, 'description');
     const leaderId = optionalText(body, 'leaderId', 100);
     const responsibleUserId = optionalText(body, 'responsibleUserId', 100);
-    const createdBy = optionalText(body, 'createdBy', 100);
+    const createdBy = optionalText(body, 'createdBy', 100) || createdByUserId || null;
 
-    const team = await this.prisma.team.findUnique({ where: { id: teamId }, select: { id: true } });
+    const team = await this.projectRepo.findTeam(teamId);
     if (!team) throw new NotFoundException('Equipe não encontrada.');
 
     if (leaderId) {
-      const leaderMember = await this.prisma.teamMember.findUnique({
-        where: { teamId_userId: { teamId, userId: leaderId } },
-      });
+      const leaderMember = await this.projectRepo.findTeamMember(teamId, leaderId);
       if (!leaderMember) throw new BadRequestException('O líder deve pertencer à mesma equipe do projeto.');
-      if (leaderMember.role !== 'LEADER') throw new BadRequestException('Apenas membros com papel LEADER podem liderar o projeto.');
+      if (leaderMember.role !== 'LEADER') {
+        throw new BadRequestException('Apenas membros com papel LEADER podem liderar o projeto.');
+      }
     }
 
     if (responsibleUserId) {
-      const responsibleMember = await this.prisma.teamMember.findUnique({
-        where: { teamId_userId: { teamId, userId: responsibleUserId } },
-      });
+      const responsibleMember = await this.projectRepo.findTeamMember(teamId, responsibleUserId);
       if (!responsibleMember) throw new BadRequestException('O responsável deve pertencer à mesma equipe do projeto.');
     }
 
@@ -84,20 +61,68 @@ export class ProjectsService {
       membersToCreate.push({ userId: responsibleUserId, role: 'MEMBER' });
     }
 
-    return this.prisma.project.create({
-      data: {
-        teamId,
-        name,
-        description,
-        leaderId,
-        responsibleUserId,
-        createdBy,
-        ...(membersToCreate.length > 0 ? {
-          members: {
-            create: membersToCreate,
-          },
-        } : {}),
-      },
+    return this.projectRepo.create({
+      teamId,
+      name,
+      description,
+      leaderId,
+      responsibleUserId,
+      createdBy,
+      members: membersToCreate.length > 0 ? membersToCreate : undefined,
     });
+  }
+
+  async update(id: string, value: unknown): Promise<ProjectRecord> {
+    await this.getById(id);
+    const body = fields(value);
+    const name = optionalText(body, 'name', 160);
+    const description = optionalText(body, 'description');
+
+    return this.projectRepo.update(id, {
+      name: name ?? undefined,
+      description: description ?? undefined,
+    });
+  }
+
+  async changeStatus(id: string, value: unknown, currentUserId: string): Promise<ProjectRecord> {
+    const project = await this.getById(id);
+    const body = fields(value);
+    const newStatus = requiredText(body, 'status', 50).toUpperCase();
+    const reason = optionalText(body, 'reason');
+
+    if (!VALID_PROJECT_STATUSES.includes(newStatus)) {
+      throw new BadRequestException(
+        `Status inválido. Valores aceitos: ${VALID_PROJECT_STATUSES.join(', ')}.`,
+      );
+    }
+
+    return this.projectRepo.updateStatus(id, newStatus, currentUserId, reason, project.status);
+  }
+
+  async listMembers(projectId: string): Promise<ProjectMemberRecord[]> {
+    await this.getById(projectId);
+    return this.projectRepo.listMembers(projectId);
+  }
+
+  async addMember(projectId: string, value: unknown): Promise<ProjectMemberRecord> {
+    await this.getById(projectId);
+    const body = fields(value);
+    const userId = requiredText(body, 'userId', 100);
+    const role = (optionalText(body, 'role', 20) || 'MEMBER').toUpperCase();
+
+    if (role !== 'MEMBER' && role !== 'OWNER') {
+      throw new BadRequestException('O papel do membro no projeto deve ser MEMBER ou OWNER.');
+    }
+
+    return this.projectRepo.addMember(projectId, userId, role as 'MEMBER' | 'OWNER');
+  }
+
+  async removeMember(projectId: string, userId: string): Promise<void> {
+    await this.getById(projectId);
+    const member = await this.projectRepo.findMember(projectId, userId);
+    if (!member) {
+      throw new NotFoundException('Membro não encontrado neste projeto.');
+    }
+    await this.projectRepo.removeMember(projectId, userId);
   }
 }

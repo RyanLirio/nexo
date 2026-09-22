@@ -12,10 +12,11 @@ import { HelpRequestsService } from './help-requests/help-requests.service';
 
 import { UsersModule } from './users/users.module';
 import { TeamsModule } from './teams/teams.module';
+import { ProjectsModule } from './projects/projects.module';
 
 @Module({
-  imports: [UsersModule, TeamsModule],
-  controllers: [HealthController, ProjectsController, CheckInsController, KnowledgeController, HelpRequestsController],
-  providers: [PrismaService, ProjectsService, CheckInsService, KnowledgeService, HelpRequestsService],
+  imports: [UsersModule, TeamsModule, ProjectsModule],
+  controllers: [HealthController, CheckInsController, KnowledgeController, HelpRequestsController],
+  providers: [PrismaService, CheckInsService, KnowledgeService, HelpRequestsService],
 })
 export class AppModule {}

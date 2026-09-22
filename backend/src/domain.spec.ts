@@ -102,11 +102,11 @@ test('rejeita autorização de conhecimento feita por outro usuário que não se
 });
 
 test('criação de projeto rejeita líder que não pertence ao time', async () => {
-  const database = {
-    team: { findUnique: async () => ({ id: 'team-1' }) },
-    teamMember: { findUnique: async () => null },
-  } as unknown as PrismaService;
-  const service = new ProjectsService(database);
+  const repo = {
+    findTeam: async () => ({ id: 'team-1' }),
+    findTeamMember: async () => null,
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
 
   await assert.rejects(
     service.create({
@@ -119,11 +119,11 @@ test('criação de projeto rejeita líder que não pertence ao time', async () =
 });
 
 test('criação de projeto rejeita líder com papel MEMBER no time', async () => {
-  const database = {
-    team: { findUnique: async () => ({ id: 'team-1' }) },
-    teamMember: { findUnique: async () => ({ userId: 'user-member', role: 'MEMBER' }) },
-  } as unknown as PrismaService;
-  const service = new ProjectsService(database);
+  const repo = {
+    findTeam: async () => ({ id: 'team-1' }),
+    findTeamMember: async () => ({ userId: 'user-member', role: 'MEMBER' }),
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
 
   await assert.rejects(
     service.create({
@@ -137,27 +137,19 @@ test('criação de projeto rejeita líder com papel MEMBER no time', async () =>
 
 test('criação de projeto aceita líder com papel LEADER e cadastra responsável', async () => {
   let projectCreated: Record<string, unknown> | undefined;
-  const database = {
-    team: { findUnique: async () => ({ id: 'team-1' }) },
-    teamMember: {
-      findUnique: async (input: { where: { teamId_userId: { userId: string } } }) => {
-        if (input.where.teamId_userId.userId === 'user-leader') {
-          return { userId: 'user-leader', role: 'LEADER' };
-        }
-        if (input.where.teamId_userId.userId === 'user-resp') {
-          return { userId: 'user-resp', role: 'MEMBER' };
-        }
-        return null;
-      },
+  const repo = {
+    findTeam: async () => ({ id: 'team-1' }),
+    findTeamMember: async (_teamId: string, userId: string) => {
+      if (userId === 'user-leader') return { userId: 'user-leader', role: 'LEADER' };
+      if (userId === 'user-resp') return { userId: 'user-resp', role: 'MEMBER' };
+      return null;
     },
-    project: {
-      create: async (input: { data: Record<string, unknown> }) => {
-        projectCreated = input.data;
-        return { id: 'proj-123', ...input.data };
-      },
+    create: async (data: Record<string, unknown>) => {
+      projectCreated = data;
+      return { id: 'proj-123', ...data };
     },
-  } as unknown as PrismaService;
-  const service = new ProjectsService(database);
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
 
   const result = await service.create({
     teamId: 'team-1',
@@ -169,12 +161,32 @@ test('criação de projeto aceita líder com papel LEADER e cadastra responsáve
   assert.equal(result.id, 'proj-123');
   assert.equal(projectCreated?.leaderId, 'user-leader');
   assert.equal(projectCreated?.responsibleUserId, 'user-resp');
-  assert.deepEqual(projectCreated?.members, {
-    create: [
-      { userId: 'user-leader', role: 'OWNER' },
-      { userId: 'user-resp', role: 'MEMBER' },
-    ],
-  });
+  assert.deepEqual(projectCreated?.members, [
+    { userId: 'user-leader', role: 'OWNER' },
+    { userId: 'user-resp', role: 'MEMBER' },
+  ]);
+});
+
+test('alteração de status de projeto grava auditoria e valida status válidos', async () => {
+  let statusUpdate: Record<string, unknown> | undefined;
+  const repo = {
+    findById: async () => ({ id: 'proj-1', status: 'ACTIVE' }),
+    updateStatus: async (id: string, newStatus: string, changedById: string, reason?: string) => {
+      statusUpdate = { id, newStatus, changedById, reason };
+      return { id, status: newStatus };
+    },
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
+
+  const updated = await service.changeStatus('proj-1', { status: 'COMPLETED', reason: 'Entrega finalizada' }, 'user-author');
+  assert.equal(updated.status, 'COMPLETED');
+  assert.equal(statusUpdate?.newStatus, 'COMPLETED');
+  assert.equal(statusUpdate?.changedById, 'user-author');
+
+  await assert.rejects(
+    service.changeStatus('proj-1', { status: 'INVALIDO' }, 'user-author'),
+    BadRequestException,
+  );
 });
 
 test('pedido de ajuda aceita avanço e rejeita retorno após resolução', async () => {

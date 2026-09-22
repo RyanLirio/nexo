@@ -10,7 +10,10 @@ import { KnowledgeService } from './knowledge/knowledge.service';
 import { HelpRequestsController } from './help-requests/help-requests.controller';
 import { HelpRequestsService } from './help-requests/help-requests.service';
 
+import { UsersModule } from './users/users.module';
+
 @Module({
+  imports: [UsersModule],
   controllers: [HealthController, ProjectsController, CheckInsController, KnowledgeController, HelpRequestsController],
   providers: [PrismaService, ProjectsService, CheckInsService, KnowledgeService, HelpRequestsService],
 })

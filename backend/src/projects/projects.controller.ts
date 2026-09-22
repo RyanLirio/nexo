@@ -1,9 +1,14 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 
 @Controller()
 export class ProjectsController {
   constructor(private readonly projects: ProjectsService) {}
+
+  @Post('projects')
+  create(@Body() body: unknown) {
+    return this.projects.create(body);
+  }
 
   @Get('projects/:id')
   getById(@Param('id') id: string) {

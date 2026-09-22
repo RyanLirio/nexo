@@ -47,6 +47,11 @@ export class KnowledgeService {
     const solution = requiredText(body, 'solution');
     const technology = optionalText(body, 'technology', 160);
     const sourceCheckInId = optionalText(body, 'sourceCheckInId', 100);
+    const sourceHelpRequestId = optionalText(body, 'sourceHelpRequestId', 100);
+
+    if (sourceCheckInId && sourceHelpRequestId) {
+      throw new BadRequestException('Uma entrada de conhecimento não pode ter duas origens simultâneas.');
+    }
 
     const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
     if (!project) throw new NotFoundException('Projeto não encontrado.');
@@ -55,6 +60,7 @@ export class KnowledgeService {
       select: { userId: true },
     });
     if (!membership) throw new ForbiddenException('O autor informado não participa deste projeto.');
+
     if (sourceCheckInId) {
       const source = await this.prisma.checkIn.findUnique({
         where: { id: sourceCheckInId },
@@ -64,8 +70,28 @@ export class KnowledgeService {
         throw new BadRequestException('O check-in de origem deve pertencer ao mesmo projeto.');
       }
     }
+
+    if (sourceHelpRequestId) {
+      const sourceHelp = await this.prisma.helpRequest.findUnique({
+        where: { id: sourceHelpRequestId },
+        select: { projectId: true },
+      });
+      if (!sourceHelp || sourceHelp.projectId !== projectId) {
+        throw new BadRequestException('O pedido de ajuda de origem deve pertencer ao mesmo projeto.');
+      }
+    }
+
     return this.prisma.knowledgeEntry.create({
-      data: { projectId, authorId, title, problem, solution, technology, sourceCheckInId },
+      data: {
+        projectId,
+        authorId,
+        title,
+        problem,
+        solution,
+        technology,
+        sourceCheckInId,
+        sourceHelpRequestId,
+      },
     });
   }
 
@@ -74,10 +100,14 @@ export class KnowledgeService {
     const entry = await this.prisma.knowledgeEntry.findUnique({ where: { id } });
     if (!entry) throw new NotFoundException('Conhecimento não encontrado.');
     if (entry.authorId !== authorId) throw new ForbiddenException('Somente o autor informado pode autorizar.');
-    if (entry.sharingAuthorizedAt) return entry;
+    if (entry.sharingAuthorizedAt && entry.sharingAuthorizedBy) return entry;
+
     return this.prisma.knowledgeEntry.update({
       where: { id },
-      data: { sharingAuthorizedAt: new Date() },
+      data: {
+        sharingAuthorizedBy: authorId,
+        sharingAuthorizedAt: new Date(),
+      },
     });
   }
 }

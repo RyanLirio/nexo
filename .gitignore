@@ -10,3 +10,6 @@ coverage/
 backend/src/generated/
 .DS_Store
 Thumbs.db
+
+context/
+docs/superpowers/

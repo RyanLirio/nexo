@@ -10,8 +10,23 @@ import { KnowledgeService } from './knowledge/knowledge.service';
 import { HelpRequestsController } from './help-requests/help-requests.controller';
 import { HelpRequestsService } from './help-requests/help-requests.service';
 
+import { UsersModule } from './users/users.module';
+import { TeamsModule } from './teams/teams.module';
+import { ProjectsModule } from './projects/projects.module';
+import { CheckInsModule } from './check-ins/check-ins.module';
+import { KnowledgeModule } from './knowledge/knowledge.module';
+import { HelpRequestsModule } from './help-requests/help-requests.module';
+
 @Module({
-  controllers: [HealthController, ProjectsController, CheckInsController, KnowledgeController, HelpRequestsController],
-  providers: [PrismaService, ProjectsService, CheckInsService, KnowledgeService, HelpRequestsService],
+  imports: [
+    UsersModule,
+    TeamsModule,
+    ProjectsModule,
+    CheckInsModule,
+    KnowledgeModule,
+    HelpRequestsModule,
+  ],
+  controllers: [HealthController],
+  providers: [PrismaService],
 })
 export class AppModule {}

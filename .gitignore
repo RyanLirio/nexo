@@ -12,4 +12,8 @@ backend/src/generated/
 Thumbs.db
 
 context/
-docs/superpowers/
+docs/superpowers/
+
+# Agent skills
+AGENTS.md
+docs/agents/

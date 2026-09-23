@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "start": "nest start",
+    "dev": "nest start --watch",
     "start:dev": "nest start --watch",
     "build": "prisma generate && nest build",
     "start:prod": "node dist/main.js",
@@ -13,7 +14,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:status": "prisma migrate status",
     "seed": "npm run build && node scripts/seed.cjs",
-    "test": "npm run build && node --test dist/domain.spec.js"
+    "test": "npm run build && node --test \"dist/**/*.spec.js\""
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

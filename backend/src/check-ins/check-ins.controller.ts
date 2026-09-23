@@ -1,17 +1,29 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { AuthGuard, AuthenticatedUser } from '../common/auth/auth.guard';
+import { CurrentUser } from '../common/auth/current-user.decorator';
 import { CheckInsService } from './check-ins.service';
 
-@Controller('projects/:projectId/check-ins')
+@Controller('api/v1')
 export class CheckInsController {
   constructor(private readonly checkIns: CheckInsService) {}
 
-  @Get()
-  list(@Param('projectId') projectId: string) {
+  @Get('projects/:projectId/check-ins')
+  listByProject(@Param('projectId') projectId: string) {
     return this.checkIns.list(projectId);
   }
 
-  @Post()
-  create(@Param('projectId') projectId: string, @Body() body: unknown) {
-    return this.checkIns.create(projectId, body);
+  @Post('projects/:projectId/check-ins')
+  @UseGuards(AuthGuard)
+  create(
+    @Param('projectId') projectId: string,
+    @Body() body: unknown,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    return this.checkIns.create(projectId, body, user?.id);
+  }
+
+  @Get('check-ins/:id')
+  getById(@Param('id') id: string) {
+    return this.checkIns.getById(id);
   }
 }

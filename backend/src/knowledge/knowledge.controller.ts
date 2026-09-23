@@ -1,12 +1,26 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { AuthGuard, AuthenticatedUser } from '../common/auth/auth.guard';
+import { CurrentUser } from '../common/auth/current-user.decorator';
 import { KnowledgeService } from './knowledge.service';
 
-@Controller('knowledge')
+@Controller('api/v1/knowledge')
 export class KnowledgeController {
   constructor(private readonly knowledge: KnowledgeService) {}
 
   @Get()
-  list(@Query('q') query?: string, @Query('projectId') projectId?: string) {
+  list(
+    @Query('query') query?: string,
+    @Query('projectId') projectId?: string,
+  ) {
     return this.knowledge.list(query, projectId);
   }
 
@@ -16,12 +30,22 @@ export class KnowledgeController {
   }
 
   @Post()
-  create(@Body() body: unknown) {
-    return this.knowledge.create(body);
+  @UseGuards(AuthGuard)
+  create(
+    @Body() body: unknown,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    return this.knowledge.create(body, user?.id);
   }
 
   @Patch(':id/authorize')
-  authorize(@Param('id') id: string, @Body() body: unknown) {
-    return this.knowledge.authorize(id, body);
+  @UseGuards(AuthGuard)
+  authorize(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    return this.knowledge.authorize(id, body, user?.id);
   }
 }
+

@@ -1,37 +1,53 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
-import { fields, optionalText, requiredText } from '../request-fields';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { CheckInRecord, CheckInRepository } from './check-in.repository';
+import { CheckIn } from './models';
+import { fields, optionalText } from '../request-fields';
 
 @Injectable()
 export class CheckInsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly checkInRepo: CheckInRepository) {}
 
-  async list(projectId: string) {
-    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
-    if (!project) throw new NotFoundException('Projeto não encontrado.');
-    return this.prisma.checkIn.findMany({
-      where: { projectId },
-      include: { user: { select: { id: true, name: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
+  async list(projectId: string): Promise<CheckInRecord[]> {
+    const exists = await this.checkInRepo.projectExists(projectId);
+    if (!exists) throw new NotFoundException('Projeto não encontrado.');
+    return this.checkInRepo.listByProject(projectId);
   }
 
-  async create(projectId: string, value: unknown) {
+  async getById(id: string): Promise<CheckInRecord> {
+    const checkIn = await this.checkInRepo.findById(id);
+    if (!checkIn) throw new NotFoundException('Check-in não encontrado.');
+    return checkIn;
+  }
+
+  async create(projectId: string, value: unknown, currentUserId?: string): Promise<CheckInRecord> {
     const body = fields(value);
-    const userId = requiredText(body, 'userId', 100);
-    const summary = requiredText(body, 'summary');
-    const difficulties = optionalText(body, 'difficulties');
-    const nextSteps = optionalText(body, 'nextSteps');
+    const userId = optionalText(body, 'userId', 100) || currentUserId;
+    if (!userId) {
+      throw new BadRequestException('Identificador de usuário ausente no check-in.');
+    }
 
-    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
-    if (!project) throw new NotFoundException('Projeto não encontrado.');
-    const membership = await this.prisma.projectMember.findUnique({
-      where: { projectId_userId: { projectId, userId } },
-      select: { userId: true },
+    const validated = CheckIn.validateCreate({
+      summary: optionalText(body, 'summary'),
+      difficulties: optionalText(body, 'difficulties'),
+      nextSteps: optionalText(body, 'nextSteps'),
+      messageIds: body.messageIds,
     });
-    if (!membership) throw new ForbiddenException('O usuário informado não participa deste projeto.');
 
-    return this.prisma.checkIn.create({ data: { projectId, userId, summary, difficulties, nextSteps } });
+    const exists = await this.checkInRepo.projectExists(projectId);
+    if (!exists) throw new NotFoundException('Projeto não encontrado.');
+
+    const isMember = await this.checkInRepo.isProjectMember(projectId, userId);
+    if (!isMember) {
+      throw new ForbiddenException('O usuário informado não participa deste projeto.');
+    }
+
+    return this.checkInRepo.create({
+      projectId,
+      userId,
+      summary: validated.summary,
+      difficulties: validated.difficulties,
+      nextSteps: validated.nextSteps,
+      messageIds: validated.messageIds,
+    });
   }
 }

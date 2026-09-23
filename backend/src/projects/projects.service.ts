@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ProjectMemberRecord, ProjectRecord, ProjectRepository } from './project.repository';
+import { VALID_PROJECT_STATUSES } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
 
-const VALID_PROJECT_STATUSES = ['PLANNING', 'ACTIVE', 'PAUSED', 'COMPLETED'];
 
 @Injectable()
 export class ProjectsService {
@@ -14,18 +14,9 @@ export class ProjectsService {
     return project;
   }
 
+
   async list(filter?: { teamId?: string; status?: string; userId?: string }): Promise<any[]> {
     return this.projectRepo.list(filter);
-  }
-
-  async listByUser(userId: string): Promise<any[]> {
-    return this.projectRepo.list({ userId });
-  }
-
-  async listByTeam(teamId: string): Promise<any[]> {
-    const team = await this.projectRepo.findTeam(teamId);
-    if (!team) throw new NotFoundException('Equipe não encontrada.');
-    return this.projectRepo.list({ teamId });
   }
 
   async create(value: unknown, createdByUserId?: string): Promise<ProjectRecord> {
@@ -72,25 +63,13 @@ export class ProjectsService {
     });
   }
 
-  async update(id: string, value: unknown): Promise<ProjectRecord> {
-    await this.getById(id);
-    const body = fields(value);
-    const name = optionalText(body, 'name', 160);
-    const description = optionalText(body, 'description');
-
-    return this.projectRepo.update(id, {
-      name: name ?? undefined,
-      description: description ?? undefined,
-    });
-  }
-
   async changeStatus(id: string, value: unknown, currentUserId: string): Promise<ProjectRecord> {
     const project = await this.getById(id);
     const body = fields(value);
     const newStatus = requiredText(body, 'status', 50).toUpperCase();
     const reason = optionalText(body, 'reason');
 
-    if (!VALID_PROJECT_STATUSES.includes(newStatus)) {
+    if (!(VALID_PROJECT_STATUSES as string[]).includes(newStatus)) {
       throw new BadRequestException(
         `Status inválido. Valores aceitos: ${VALID_PROJECT_STATUSES.join(', ')}.`,
       );

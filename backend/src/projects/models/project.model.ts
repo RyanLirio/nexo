@@ -1,10 +1,12 @@
-import { ProjectStatus } from './project-status.enum';
+import { BadRequestException } from '@nestjs/common';
+import { ProjectStatus, VALID_PROJECT_STATUSES } from './project-status.enum';
 
 /**
  * Domain Model: Project
  *
  * Representa um projeto acadêmico vinculado a uma equipe.
  * Encapsula status, liderança, responsável e timestamps.
+ * Contém regras de domínio para validação de líder, membros e transições de status.
  */
 export class Project {
   readonly id: string;
@@ -50,5 +52,69 @@ export class Project {
   /** Verifica se o projeto já foi finalizado. */
   get isCompleted(): boolean {
     return this.status === ProjectStatus.COMPLETED;
+  }
+
+  /**
+   * Valida se um status é válido para transição.
+   * Lança BadRequestException se o status não está na lista de valores aceitos.
+   */
+  static validateStatus(status: string): ProjectStatus {
+    const normalized = status.toUpperCase();
+    if (!(VALID_PROJECT_STATUSES as string[]).includes(normalized)) {
+      throw new BadRequestException(
+        `Status inválido. Valores aceitos: ${VALID_PROJECT_STATUSES.join(', ')}.`,
+      );
+    }
+    return normalized as ProjectStatus;
+  }
+
+  /**
+   * Valida que o líder indicado tem papel LEADER na equipe.
+   * Recebe o membro encontrado no repositório.
+   */
+  static validateLeader(member: { userId: string; role: string } | null): void {
+    if (!member) {
+      throw new BadRequestException('O líder deve pertencer à mesma equipe do projeto.');
+    }
+    if (member.role !== 'LEADER') {
+      throw new BadRequestException('Apenas membros com papel LEADER podem liderar o projeto.');
+    }
+  }
+
+  /**
+   * Valida que o responsável pertence à mesma equipe.
+   */
+  static validateResponsible(member: { userId: string; role: string } | null): void {
+    if (!member) {
+      throw new BadRequestException('O responsável deve pertencer à mesma equipe do projeto.');
+    }
+  }
+
+  /**
+   * Monta a lista de membros iniciais do projeto a partir do líder e responsável.
+   */
+  static buildInitialMembers(
+    leaderId?: string | null,
+    responsibleUserId?: string | null,
+  ): { userId: string; role: 'OWNER' | 'MEMBER' }[] {
+    const members: { userId: string; role: 'OWNER' | 'MEMBER' }[] = [];
+    if (leaderId) {
+      members.push({ userId: leaderId, role: 'OWNER' });
+    }
+    if (responsibleUserId && responsibleUserId !== leaderId) {
+      members.push({ userId: responsibleUserId, role: 'MEMBER' });
+    }
+    return members;
+  }
+
+  /**
+   * Valida o papel de um membro de projeto.
+   */
+  static validateMemberRole(role?: string): 'OWNER' | 'MEMBER' {
+    const normalized = (role || 'MEMBER').toUpperCase();
+    if (normalized !== 'MEMBER' && normalized !== 'OWNER') {
+      throw new BadRequestException('O papel do membro no projeto deve ser MEMBER ou OWNER.');
+    }
+    return normalized as 'OWNER' | 'MEMBER';
   }
 }

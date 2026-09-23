@@ -1,13 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { HelpRequestRecord, HelpRequestRepository } from './help-request.repository';
+import { HelpRequest, HelpStatus } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
-
-type HelpState = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
-const nextStatus: Record<HelpState, HelpState[]> = {
-  OPEN: ['IN_PROGRESS', 'RESOLVED'],
-  IN_PROGRESS: ['RESOLVED'],
-  RESOLVED: [],
-};
 
 @Injectable()
 export class HelpRequestsService {
@@ -57,19 +51,15 @@ export class HelpRequestsService {
   }
 
   async changeStatus(id: string, value: unknown): Promise<HelpRequestRecord> {
-    const status = requiredText(fields(value), 'status', 20).toUpperCase();
-    if (status !== 'OPEN' && status !== 'IN_PROGRESS' && status !== 'RESOLVED') {
-      throw new BadRequestException('Status deve ser OPEN, IN_PROGRESS ou RESOLVED.');
-    }
+    const rawStatus = requiredText(fields(value), 'status', 20);
+    const status = HelpRequest.validateStatus(rawStatus);
 
     const request = await this.getById(id);
     if (status === request.status) return request;
 
-    if (!nextStatus[request.status].includes(status as HelpState)) {
-      throw new BadRequestException('Transição de status inválida.');
-    }
+    HelpRequest.validateTransition(request.status as HelpStatus, status);
 
-    const resolvedAt = status === 'RESOLVED' ? new Date() : null;
-    return this.helpRequestRepo.updateStatus(id, status as HelpState, resolvedAt);
+    const resolvedAt = status === HelpStatus.RESOLVED ? new Date() : null;
+    return this.helpRequestRepo.updateStatus(id, status, resolvedAt);
   }
 }

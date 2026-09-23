@@ -1,7 +1,10 @@
+import { BadRequestException } from '@nestjs/common';
+
 /**
  * Domain Model: Team
  *
  * Representa uma equipe dentro de uma organização no Nexo.
+ * Encapsula regras de validação de dados da equipe.
  */
 export class Team {
   readonly id: string;
@@ -25,5 +28,29 @@ export class Team {
     this.description = props.description ?? null;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
+  }
+
+  /**
+   * Valida os dados para criação de uma equipe.
+   */
+  static validateCreate(data: {
+    organizationId?: string;
+    name?: string;
+    description?: string | null;
+  }): { organizationId: string; name: string; description: string | null } {
+    if (!data.organizationId || typeof data.organizationId !== 'string' || !data.organizationId.trim()) {
+      throw new BadRequestException('O campo organizationId é obrigatório.');
+    }
+    if (!data.name || typeof data.name !== 'string' || !data.name.trim()) {
+      throw new BadRequestException('O nome da equipe é obrigatório.');
+    }
+    if (data.name.trim().length > 160) {
+      throw new BadRequestException('O nome da equipe deve ter até 160 caracteres.');
+    }
+    return {
+      organizationId: data.organizationId.trim(),
+      name: data.name.trim(),
+      description: data.description?.trim() || null,
+    };
   }
 }

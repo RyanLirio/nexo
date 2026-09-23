@@ -1,3 +1,5 @@
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+
 /**
  * Domain Model: KnowledgeEntry
  *
@@ -57,5 +59,33 @@ export class KnowledgeEntry {
   /** Verifica se a entrada tem duas origens simultaneamente (inválido). */
   get hasDualSource(): boolean {
     return this.sourceCheckInId !== null && this.sourceHelpRequestId !== null;
+  }
+
+  /**
+   * Valida a regra de origem única da entrada de conhecimento.
+   * Não é permitido ter sourceCheckInId e sourceHelpRequestId simultâneos.
+   */
+  static validateSources(sourceCheckInId?: string | null, sourceHelpRequestId?: string | null): void {
+    if (sourceCheckInId && sourceHelpRequestId) {
+      throw new BadRequestException('Uma entrada de conhecimento não pode ter duas origens simultâneas.');
+    }
+  }
+
+  /**
+   * Valida a autorização de compartilhamento.
+   * Somente o autor original pode autorizar o compartilhamento.
+   * Retorna true se a autorização precisa ser gravada, ou false se já está autorizada.
+   */
+  static validateAuthorization(
+    entry: { authorId: string; sharingAuthorizedAt?: Date | null; sharingAuthorizedBy?: string | null },
+    authorId: string,
+  ): boolean {
+    if (entry.authorId !== authorId) {
+      throw new ForbiddenException('Somente o autor informado pode autorizar.');
+    }
+    if (entry.sharingAuthorizedAt && entry.sharingAuthorizedBy) {
+      return false;
+    }
+    return true;
   }
 }

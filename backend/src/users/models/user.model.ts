@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+
 /**
  * Domain Model: User
  *
@@ -34,5 +36,19 @@ export class User {
   /** Retorna o nome de exibição resumido (primeiro nome). */
   get displayName(): string {
     return this.name.split(' ')[0];
+  }
+
+  /**
+   * Validação de criação de usuário.
+   * Garante que nome e email são válidos.
+   */
+  static validateCreate(data: { name?: string; email?: string }): { name: string; email: string } {
+    if (!data.name || typeof data.name !== 'string' || !data.name.trim()) {
+      throw new BadRequestException('O nome do usuário é obrigatório.');
+    }
+    if (!data.email || typeof data.email !== 'string' || !data.email.includes('@')) {
+      throw new BadRequestException('O email do usuário é obrigatório e deve ser válido.');
+    }
+    return { name: data.name.trim(), email: data.email.trim().toLowerCase() };
   }
 }

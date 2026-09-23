@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { TeamMemberRecord, TeamRecord, TeamRepository } from './team.repository';
+import { Team, TeamMember } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
 
 @Injectable()
@@ -24,11 +25,9 @@ export class TeamsService {
     const name = requiredText(body, 'name', 160);
     const description = optionalText(body, 'description');
 
-    return this.teamRepo.create({
-      organizationId,
-      name,
-      description,
-    });
+    const validated = Team.validateCreate({ organizationId, name, description });
+
+    return this.teamRepo.create(validated);
   }
 
   async update(id: string, value: unknown): Promise<TeamRecord> {
@@ -52,13 +51,9 @@ export class TeamsService {
     await this.getById(teamId);
     const body = fields(value);
     const userId = requiredText(body, 'userId', 100);
-    const role = (optionalText(body, 'role', 20) || 'MEMBER').toUpperCase();
+    const role = TeamMember.validateRole(optionalText(body, 'role', 20) || undefined);
 
-    if (role !== 'MEMBER' && role !== 'LEADER') {
-      throw new BadRequestException('O papel do membro deve ser MEMBER ou LEADER.');
-    }
-
-    return this.teamRepo.addMember(teamId, userId, role as 'MEMBER' | 'LEADER');
+    return this.teamRepo.addMember(teamId, userId, role);
   }
 
   async removeMember(teamId: string, userId: string): Promise<void> {

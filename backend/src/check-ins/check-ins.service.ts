@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { CheckInRecord, CheckInRepository } from './check-in.repository';
-import { fields, optionalText, requiredText } from '../request-fields';
+import { CheckIn } from './models';
+import { fields, optionalText } from '../request-fields';
 
 @Injectable()
 export class CheckInsService {
@@ -25,14 +26,12 @@ export class CheckInsService {
       throw new BadRequestException('Identificador de usuário ausente no check-in.');
     }
 
-    const summary = requiredText(body, 'summary');
-    const difficulties = optionalText(body, 'difficulties');
-    const nextSteps = optionalText(body, 'nextSteps');
-
-    let messageIds: string[] | undefined;
-    if (Array.isArray(body.messageIds)) {
-      messageIds = body.messageIds.filter((m): m is string => typeof m === 'string' && !!m.trim());
-    }
+    const validated = CheckIn.validateCreate({
+      summary: optionalText(body, 'summary'),
+      difficulties: optionalText(body, 'difficulties'),
+      nextSteps: optionalText(body, 'nextSteps'),
+      messageIds: body.messageIds,
+    });
 
     const exists = await this.checkInRepo.projectExists(projectId);
     if (!exists) throw new NotFoundException('Projeto não encontrado.');
@@ -45,10 +44,10 @@ export class CheckInsService {
     return this.checkInRepo.create({
       projectId,
       userId,
-      summary,
-      difficulties,
-      nextSteps,
-      messageIds,
+      summary: validated.summary,
+      difficulties: validated.difficulties,
+      nextSteps: validated.nextSteps,
+      messageIds: validated.messageIds,
     });
   }
 }

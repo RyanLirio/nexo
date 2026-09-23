@@ -1,4 +1,5 @@
-import { HelpStatus } from './help-status.enum';
+import { BadRequestException } from '@nestjs/common';
+import { HelpStatus, HELP_STATUS_TRANSITIONS } from './help-status.enum';
 
 /**
  * Domain Model: HelpRequest
@@ -47,5 +48,27 @@ export class HelpRequest {
   /** Verifica se o pedido ainda está aberto. */
   get isOpen(): boolean {
     return this.status === HelpStatus.OPEN;
+  }
+
+  /**
+   * Valida e normaliza o status de um pedido de ajuda.
+   */
+  static validateStatus(rawStatus?: string): HelpStatus {
+    const normalized = (rawStatus || '').trim().toUpperCase();
+    if (!Object.values(HelpStatus).includes(normalized as HelpStatus)) {
+      throw new BadRequestException('Status deve ser OPEN, IN_PROGRESS ou RESOLVED.');
+    }
+    return normalized as HelpStatus;
+  }
+
+  /**
+   * Valida se uma transição de status é permitida pela máquina de estados.
+   */
+  static validateTransition(currentStatus: HelpStatus, newStatus: HelpStatus): void {
+    if (currentStatus === newStatus) return;
+    const allowed = HELP_STATUS_TRANSITIONS[currentStatus];
+    if (!allowed || !allowed.includes(newStatus)) {
+      throw new BadRequestException('Transição de status inválida.');
+    }
   }
 }

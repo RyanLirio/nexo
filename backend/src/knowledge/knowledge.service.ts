@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { KnowledgeEntryRecord, KnowledgeRepository } from './knowledge.repository';
+import { KnowledgeEntry } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
 
 @Injectable()
@@ -38,9 +39,7 @@ export class KnowledgeService {
     const sourceCheckInId = optionalText(body, 'sourceCheckInId', 100);
     const sourceHelpRequestId = optionalText(body, 'sourceHelpRequestId', 100);
 
-    if (sourceCheckInId && sourceHelpRequestId) {
-      throw new BadRequestException('Uma entrada de conhecimento não pode ter duas origens simultâneas.');
-    }
+    KnowledgeEntry.validateSources(sourceCheckInId, sourceHelpRequestId);
 
     const projectExists = await this.knowledgeRepo.projectExists(projectId);
     if (!projectExists) throw new NotFoundException('Projeto não encontrado.');
@@ -86,11 +85,8 @@ export class KnowledgeService {
     const entry = await this.knowledgeRepo.findById(id);
     if (!entry) throw new NotFoundException('Conhecimento não encontrado.');
 
-    if (entry.authorId !== authorId) {
-      throw new ForbiddenException('Somente o autor informado pode autorizar.');
-    }
-
-    if (entry.sharingAuthorizedAt && entry.sharingAuthorizedBy) {
+    const needsUpdate = KnowledgeEntry.validateAuthorization(entry, authorId);
+    if (!needsUpdate) {
       return entry;
     }
 

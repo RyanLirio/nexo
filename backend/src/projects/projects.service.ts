@@ -1,8 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ProjectMemberRecord, ProjectRecord, ProjectRepository } from './project.repository';
-import { VALID_PROJECT_STATUSES } from './models';
+import { Project } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
-
 
 @Injectable()
 export class ProjectsService {
@@ -13,7 +12,6 @@ export class ProjectsService {
     if (!project) throw new NotFoundException('Projeto não encontrado.');
     return project;
   }
-
 
   async list(filter?: { teamId?: string; status?: string; userId?: string }): Promise<any[]> {
     return this.projectRepo.list(filter);
@@ -33,24 +31,15 @@ export class ProjectsService {
 
     if (leaderId) {
       const leaderMember = await this.projectRepo.findTeamMember(teamId, leaderId);
-      if (!leaderMember) throw new BadRequestException('O líder deve pertencer à mesma equipe do projeto.');
-      if (leaderMember.role !== 'LEADER') {
-        throw new BadRequestException('Apenas membros com papel LEADER podem liderar o projeto.');
-      }
+      Project.validateLeader(leaderMember);
     }
 
     if (responsibleUserId) {
       const responsibleMember = await this.projectRepo.findTeamMember(teamId, responsibleUserId);
-      if (!responsibleMember) throw new BadRequestException('O responsável deve pertencer à mesma equipe do projeto.');
+      Project.validateResponsible(responsibleMember);
     }
 
-    const membersToCreate: { userId: string; role: 'OWNER' | 'MEMBER' }[] = [];
-    if (leaderId) {
-      membersToCreate.push({ userId: leaderId, role: 'OWNER' });
-    }
-    if (responsibleUserId && responsibleUserId !== leaderId) {
-      membersToCreate.push({ userId: responsibleUserId, role: 'MEMBER' });
-    }
+    const members = Project.buildInitialMembers(leaderId, responsibleUserId);
 
     return this.projectRepo.create({
       teamId,
@@ -59,21 +48,15 @@ export class ProjectsService {
       leaderId,
       responsibleUserId,
       createdBy,
-      members: membersToCreate.length > 0 ? membersToCreate : undefined,
+      members: members.length > 0 ? members : undefined,
     });
   }
 
   async changeStatus(id: string, value: unknown, currentUserId: string): Promise<ProjectRecord> {
     const project = await this.getById(id);
     const body = fields(value);
-    const newStatus = requiredText(body, 'status', 50).toUpperCase();
+    const newStatus = Project.validateStatus(requiredText(body, 'status', 50));
     const reason = optionalText(body, 'reason');
-
-    if (!(VALID_PROJECT_STATUSES as string[]).includes(newStatus)) {
-      throw new BadRequestException(
-        `Status inválido. Valores aceitos: ${VALID_PROJECT_STATUSES.join(', ')}.`,
-      );
-    }
 
     return this.projectRepo.updateStatus(id, newStatus, currentUserId, reason, project.status);
   }
@@ -87,13 +70,9 @@ export class ProjectsService {
     await this.getById(projectId);
     const body = fields(value);
     const userId = requiredText(body, 'userId', 100);
-    const role = (optionalText(body, 'role', 20) || 'MEMBER').toUpperCase();
+    const role = Project.validateMemberRole(optionalText(body, 'role', 20) || undefined);
 
-    if (role !== 'MEMBER' && role !== 'OWNER') {
-      throw new BadRequestException('O papel do membro no projeto deve ser MEMBER ou OWNER.');
-    }
-
-    return this.projectRepo.addMember(projectId, userId, role as 'MEMBER' | 'OWNER');
+    return this.projectRepo.addMember(projectId, userId, role);
   }
 
   async removeMember(projectId: string, userId: string): Promise<void> {

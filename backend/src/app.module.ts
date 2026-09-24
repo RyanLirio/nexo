@@ -17,8 +17,15 @@ import { CheckInsModule } from './check-ins/check-ins.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { HelpRequestsModule } from './help-requests/help-requests.module';
 
+import { AuthModule } from './auth/auth.module';
+import { APP_GUARD } from '@nestjs/core';
+import { AuthGuard } from './common/auth/auth.guard';
+import { RolesGuard } from './common/auth/roles.guard';
+import { AccessControlService, PrismaAccessControlService } from './common/auth/access-control.service';
+
 @Module({
   imports: [
+    AuthModule,
     UsersModule,
     TeamsModule,
     ProjectsModule,
@@ -27,6 +34,20 @@ import { HelpRequestsModule } from './help-requests/help-requests.module';
     HelpRequestsModule,
   ],
   controllers: [HealthController],
-  providers: [PrismaService],
+  providers: [
+    PrismaService,
+    {
+      provide: AccessControlService,
+      useClass: PrismaAccessControlService,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: AuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+  ],
 })
 export class AppModule {}

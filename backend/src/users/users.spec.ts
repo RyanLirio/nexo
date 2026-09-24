@@ -36,6 +36,8 @@ class InMemoryUserRepository extends UserRepository {
       );
     });
   }
+
+  async updateGoogleAuth(): Promise<void> {}
 }
 
 test('UsersService.getMe retorna usuário autenticado', async () => {

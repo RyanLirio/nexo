@@ -28,4 +28,8 @@ export abstract class UserRepository {
     relation?: 'member' | 'responsible' | 'leader',
     status?: string,
   ): Promise<UserProjectRecord[]>;
+  abstract updateGoogleAuth(
+    userId: string,
+    data: { googleSubject?: string; avatarUrl?: string; name?: string },
+  ): Promise<void>;
 }

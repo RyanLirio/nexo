@@ -15,7 +15,7 @@ export class AuthGuard implements CanActivate {
 
   constructor(
     @Optional() private readonly reflector?: Reflector,
-    jwtSecret?: string,
+    @Optional() jwtSecret?: string,
   ) {
     this.jwtSecret = jwtSecret || process.env.JWT_SECRET || 'nexo_default_jwt_secret_dev';
   }

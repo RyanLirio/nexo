@@ -3,6 +3,7 @@ import {
   HttpException,
   Injectable,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
@@ -26,7 +27,7 @@ export class AuthService {
   constructor(
     private readonly userRepository: UserRepository,
     private readonly googleVerifier: GoogleTokenVerifier,
-    jwtSecret?: string,
+    @Optional() jwtSecret?: string,
   ) {
     this.jwtSecret = jwtSecret || process.env.JWT_SECRET || 'nexo_default_jwt_secret_dev';
   }

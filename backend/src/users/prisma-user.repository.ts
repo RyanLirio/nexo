@@ -99,4 +99,18 @@ export class PrismaUserRepository extends UserRepository {
       orderBy: { name: 'asc' },
     });
   }
+
+  async updateGoogleAuth(
+    userId: string,
+    data: { googleSubject?: string; avatarUrl?: string; name?: string },
+  ): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(data.googleSubject ? { googleSubject: data.googleSubject } : {}),
+        ...(data.avatarUrl ? { avatarUrl: data.avatarUrl } : {}),
+        ...(data.name ? { name: data.name } : {}),
+      },
+    });
+  }
 }

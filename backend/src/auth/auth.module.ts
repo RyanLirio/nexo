@@ -1,0 +1,19 @@
+import { Module } from '@nestjs/common';
+import { UsersModule } from '../users/users.module';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { GoogleAuthLibraryVerifier, GoogleTokenVerifier } from './google-verifier';
+
+@Module({
+  imports: [UsersModule],
+  controllers: [AuthController],
+  providers: [
+    AuthService,
+    {
+      provide: GoogleTokenVerifier,
+      useClass: GoogleAuthLibraryVerifier,
+    },
+  ],
+  exports: [AuthService, GoogleTokenVerifier],
+})
+export class AuthModule {}

@@ -9,8 +9,10 @@ async function bootstrap() {
     throw new Error('PORT deve ser um número entre 1 e 65535.');
   }
   const app = await NestFactory.create(AppModule);
+  app.enableCors();
   app.enableShutdownHooks();
-  await app.listen(port, '127.0.0.1');
+  await app.listen(port);
+  console.log(`Backend Nexo rodando em http://localhost:${port}`);
 }
 
 bootstrap().catch((error: unknown) => {

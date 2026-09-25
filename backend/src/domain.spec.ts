@@ -178,6 +178,27 @@ test('criação de projeto aceita líder com papel LEADER e cadastra responsáve
   ]);
 });
 
+test('criação de projeto aceita líder com papel ADMIN', async () => {
+  const repo = {
+    findTeam: async () => ({ id: 'team-1' }),
+    findTeamMember: async (_teamId: string, userId: string) => {
+      if (userId === 'user-admin') return { userId: 'user-admin', role: 'ADMIN' };
+      return null;
+    },
+    create: async (data: Record<string, unknown>) => ({ id: 'proj-admin', ...data }),
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
+
+  const result = await service.create({
+    teamId: 'team-1',
+    name: 'Projeto Admin',
+    leaderId: 'user-admin',
+  });
+
+  assert.equal(result.id, 'proj-admin');
+});
+
+
 test('alteração de status de projeto grava auditoria e valida status válidos', async () => {
   let statusUpdate: Record<string, unknown> | undefined;
   const repo = {
@@ -374,10 +395,11 @@ test('Project.validateStatus aceita status válidos e rejeita inválidos', () =>
   assert.throws(() => Project.validateStatus('INVALIDO'), BadRequestException);
 });
 
-test('Project.validateLeader rejeita membro nulo ou sem papel LEADER', () => {
+test('Project.validateLeader rejeita membro nulo ou sem papel LEADER/ADMIN', () => {
   assert.throws(() => Project.validateLeader(null), BadRequestException);
   assert.throws(() => Project.validateLeader({ userId: 'u1', role: 'MEMBER' }), BadRequestException);
   assert.doesNotThrow(() => Project.validateLeader({ userId: 'u1', role: 'LEADER' }));
+  assert.doesNotThrow(() => Project.validateLeader({ userId: 'u1', role: 'ADMIN' }));
 });
 
 test('Project.validateResponsible rejeita membro nulo', () => {

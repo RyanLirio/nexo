@@ -160,9 +160,11 @@ export class PrismaProjectRepository extends ProjectRepository {
   }
 
   async findTeamMember(teamId: string, userId: string): Promise<{ userId: string; role: string } | null> {
-    return this.prisma.teamMember.findUnique({
+    const member = await this.prisma.teamMember.findUnique({
       where: { teamId_userId: { teamId, userId } },
-      select: { userId: true, role: true },
+      include: { user: { select: { role: true } } },
     });
+    if (!member) return null;
+    return { userId: member.userId, role: member.user.role };
   }
 }

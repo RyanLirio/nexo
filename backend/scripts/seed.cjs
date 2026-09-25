@@ -12,44 +12,31 @@ const demoDate = new Date('2026-09-21T12:00:00.000Z');
 
 async function seed() {
   await prisma.$transaction(async (db) => {
-    // 1. Organização
-    await db.organization.upsert({
-      where: { id: 'demo-organization' },
-      update: { name: 'Nexo Demo' },
-      create: { id: 'demo-organization', name: 'Nexo Demo' },
-    });
-
-    // 2. Usuários (Gustavo, Marina, Ryan, João)
+    // 1. Usuários (Gustavo ADMIN, Marina LEADER, Ryan MEMBER, João MEMBER)
     const users = [
-      { id: 'demo-gustavo', name: 'Gustavo Felicetti', email: 'gustavo@example.invalid' },
-      { id: 'demo-marina', name: 'Marina Demo', email: 'marina@example.invalid' },
-      { id: 'demo-ryan', name: 'Ryan Demo', email: 'ryan@example.invalid' },
-      { id: 'demo-joao', name: 'João Demo', email: 'joao@example.invalid' },
+      { id: 'demo-gustavo', name: 'Gustavo Felicetti', email: 'gustavo@example.invalid', role: 'ADMIN' },
+      { id: 'demo-marina', name: 'Marina Demo', email: 'marina@example.invalid', role: 'LEADER' },
+      { id: 'demo-ryan', name: 'Ryan Demo', email: 'ryan@example.invalid', role: 'MEMBER' },
+      { id: 'demo-joao', name: 'João Demo', email: 'joao@example.invalid', role: 'MEMBER' },
     ];
 
     for (const user of users) {
       await db.user.upsert({ where: { id: user.id }, update: user, create: user });
-      await db.organizationMember.upsert({
-        where: { organizationId_userId: { organizationId: 'demo-organization', userId: user.id } },
-        update: { role: user.id === 'demo-gustavo' ? 'ADMIN' : 'MEMBER' },
-        create: { organizationId: 'demo-organization', userId: user.id, role: user.id === 'demo-gustavo' ? 'ADMIN' : 'MEMBER' },
-      });
     }
 
-    // 3. Time (Equipe RPA)
+    // 2. Time (Equipe RPA)
     await db.team.upsert({
       where: { id: 'demo-team-rpa' },
       update: { name: 'Equipe RPA', description: 'Equipe de automações e inteligência do Nexo.' },
-      create: { id: 'demo-team-rpa', organizationId: 'demo-organization', name: 'Equipe RPA', description: 'Equipe de automações e inteligência do Nexo.' },
+      create: { id: 'demo-team-rpa', name: 'Equipe RPA', description: 'Equipe de automações e inteligência do Nexo.' },
     });
 
-    // Papéis no time: Gustavo (LEADER), Marina (LEADER), Ryan (MEMBER), João (MEMBER)
+    // 3. Membros do time
     for (const user of users) {
-      const isLeader = user.id === 'demo-gustavo' || user.id === 'demo-marina';
       await db.teamMember.upsert({
         where: { teamId_userId: { teamId: 'demo-team-rpa', userId: user.id } },
-        update: { role: isLeader ? 'LEADER' : 'MEMBER' },
-        create: { teamId: 'demo-team-rpa', userId: user.id, role: isLeader ? 'LEADER' : 'MEMBER' },
+        update: {},
+        create: { teamId: 'demo-team-rpa', userId: user.id },
       });
     }
 

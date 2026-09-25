@@ -2,6 +2,7 @@ export interface UserRecord {
   id: string;
   name: string;
   email: string;
+  role: string;
   avatarUrl?: string | null;
   createdAt: Date;
   updatedAt: Date;

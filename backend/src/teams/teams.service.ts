@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { TeamMemberRecord, TeamRecord, TeamRepository } from './team.repository';
-import { Team, TeamMember } from './models';
+import { Team } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
 
 @Injectable()
@@ -21,11 +21,10 @@ export class TeamsService {
 
   async create(value: unknown): Promise<TeamRecord> {
     const body = fields(value);
-    const organizationId = requiredText(body, 'organizationId', 100);
     const name = requiredText(body, 'name', 160);
     const description = optionalText(body, 'description');
 
-    const validated = Team.validateCreate({ organizationId, name, description });
+    const validated = Team.validateCreate({ name, description });
 
     return this.teamRepo.create(validated);
   }
@@ -51,9 +50,8 @@ export class TeamsService {
     await this.getById(teamId);
     const body = fields(value);
     const userId = requiredText(body, 'userId', 100);
-    const role = TeamMember.validateRole(optionalText(body, 'role', 20) || undefined);
 
-    return this.teamRepo.addMember(teamId, userId, role);
+    return this.teamRepo.addMember(teamId, userId);
   }
 
   async removeMember(teamId: string, userId: string): Promise<void> {

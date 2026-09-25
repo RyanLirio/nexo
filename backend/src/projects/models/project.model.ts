@@ -69,15 +69,16 @@ export class Project {
   }
 
   /**
-   * Valida que o líder indicado tem papel LEADER na equipe.
+   * Valida que o líder indicado pertence à equipe e possui papel LEADER ou ADMIN.
    * Recebe o membro encontrado no repositório.
    */
   static validateLeader(member: { userId: string; role: string } | null): void {
     if (!member) {
       throw new BadRequestException('O líder deve pertencer à mesma equipe do projeto.');
     }
-    if (member.role !== 'LEADER') {
-      throw new BadRequestException('Apenas membros com papel LEADER podem liderar o projeto.');
+    const role = (member.role || '').toUpperCase();
+    if (role !== 'LEADER' && role !== 'ADMIN') {
+      throw new BadRequestException('Apenas membros com papel LEADER ou ADMIN podem liderar o projeto.');
     }
   }
 

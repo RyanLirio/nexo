@@ -7,8 +7,8 @@ import { HelpRequestsService } from './help-requests/help-requests.service';
 import { KnowledgeService } from './knowledge/knowledge.service';
 import { ProjectsService } from './projects/projects.service';
 import { PrismaService } from './prisma.service';
-import { User } from './users/models';
-import { Team, TeamMember, TeamRole } from './teams/models';
+import { User, UserRole } from './users/models';
+import { Team, TeamMember } from './teams/models';
 import { Project, ProjectMember, ProjectStatus, ProjectRole, VALID_PROJECT_STATUSES } from './projects/models';
 import { CheckIn } from './check-ins/models';
 import { KnowledgeEntry } from './knowledge/models';
@@ -178,6 +178,27 @@ test('criação de projeto aceita líder com papel LEADER e cadastra responsáve
   ]);
 });
 
+test('criação de projeto aceita líder com papel ADMIN', async () => {
+  const repo = {
+    findTeam: async () => ({ id: 'team-1' }),
+    findTeamMember: async (_teamId: string, userId: string) => {
+      if (userId === 'user-admin') return { userId: 'user-admin', role: 'ADMIN' };
+      return null;
+    },
+    create: async (data: Record<string, unknown>) => ({ id: 'proj-admin', ...data }),
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
+
+  const result = await service.create({
+    teamId: 'team-1',
+    name: 'Projeto Admin',
+    leaderId: 'user-admin',
+  });
+
+  assert.equal(result.id, 'proj-admin');
+});
+
+
 test('alteração de status de projeto grava auditoria e valida status válidos', async () => {
   let statusUpdate: Record<string, unknown> | undefined;
   const repo = {
@@ -239,21 +260,42 @@ test('User.validateCreate normaliza dados', () => {
   const result = User.validateCreate({ name: '  Ryan  ', email: '  Ryan@NEXO.dev  ' });
   assert.equal(result.name, 'Ryan');
   assert.equal(result.email, 'ryan@nexo.dev');
+  assert.equal(result.role, UserRole.MEMBER);
 });
 
-// --- TeamMember Model ---
-test('TeamMember.isLeader identifica papel de líder', () => {
-  const leader = new TeamMember({ teamId: 't1', userId: 'u1', role: TeamRole.LEADER, joinedAt: new Date() });
-  const member = new TeamMember({ teamId: 't1', userId: 'u2', role: TeamRole.MEMBER, joinedAt: new Date() });
+test('User identifica papéis de acesso corretamente', () => {
+  const now = new Date();
+  const admin = new User({ id: '1', name: 'Admin', email: 'admin@nexo.dev', role: UserRole.ADMIN, createdAt: now, updatedAt: now });
+  const leader = new User({ id: '2', name: 'Leader', email: 'leader@nexo.dev', role: UserRole.LEADER, createdAt: now, updatedAt: now });
+  const member = new User({ id: '3', name: 'Member', email: 'member@nexo.dev', role: UserRole.MEMBER, createdAt: now, updatedAt: now });
+
+  assert.equal(admin.isAdmin, true);
+  assert.equal(admin.isLeader, false);
   assert.equal(leader.isLeader, true);
+  assert.equal(leader.isAdmin, false);
+  assert.equal(member.isMember, true);
   assert.equal(member.isLeader, false);
 });
 
-test('TeamMember.validateRole normaliza e valida papéis', () => {
-  assert.equal(TeamMember.validateRole('leader'), TeamRole.LEADER);
-  assert.equal(TeamMember.validateRole('member'), TeamRole.MEMBER);
-  assert.equal(TeamMember.validateRole(undefined), TeamRole.MEMBER);
-  assert.throws(() => TeamMember.validateRole('ADMIN'), BadRequestException);
+test('User.validateRole valida e normaliza papéis', () => {
+  assert.equal(User.validateRole('admin'), UserRole.ADMIN);
+  assert.equal(User.validateRole('leader'), UserRole.LEADER);
+  assert.equal(User.validateRole('member'), UserRole.MEMBER);
+  assert.equal(User.validateRole(undefined), UserRole.MEMBER);
+  assert.throws(() => User.validateRole('INVALIDO'), BadRequestException);
+});
+
+test('User.validateCreate aceita e valida role', () => {
+  const result = User.validateCreate({ name: 'Ryan', email: 'ryan@nexo.dev', role: 'leader' });
+  assert.equal(result.role, UserRole.LEADER);
+});
+
+
+// --- TeamMember Model ---
+test('TeamMember instancia associação pura', () => {
+  const member = new TeamMember({ teamId: 't1', userId: 'u1', joinedAt: new Date() });
+  assert.equal(member.teamId, 't1');
+  assert.equal(member.userId, 'u1');
 });
 
 // --- Project Model ---
@@ -353,10 +395,11 @@ test('Project.validateStatus aceita status válidos e rejeita inválidos', () =>
   assert.throws(() => Project.validateStatus('INVALIDO'), BadRequestException);
 });
 
-test('Project.validateLeader rejeita membro nulo ou sem papel LEADER', () => {
+test('Project.validateLeader rejeita membro nulo ou sem papel LEADER/ADMIN', () => {
   assert.throws(() => Project.validateLeader(null), BadRequestException);
   assert.throws(() => Project.validateLeader({ userId: 'u1', role: 'MEMBER' }), BadRequestException);
   assert.doesNotThrow(() => Project.validateLeader({ userId: 'u1', role: 'LEADER' }));
+  assert.doesNotThrow(() => Project.validateLeader({ userId: 'u1', role: 'ADMIN' }));
 });
 
 test('Project.validateResponsible rejeita membro nulo', () => {
@@ -387,11 +430,10 @@ test('Project.validateMemberRole valida e normaliza papel no projeto', () => {
 
 // --- Team Model Domain Methods ---
 test('Team.validateCreate valida e normaliza dados de equipe', () => {
-  assert.throws(() => Team.validateCreate({ organizationId: '', name: 'Equipe' }), BadRequestException);
-  assert.throws(() => Team.validateCreate({ organizationId: 'org-1', name: '' }), BadRequestException);
-  assert.throws(() => Team.validateCreate({ organizationId: 'org-1', name: 'a'.repeat(161) }), BadRequestException);
-  const result = Team.validateCreate({ organizationId: '  org-1  ', name: '  Alpha  ', description: '  Desc  ' });
-  assert.deepEqual(result, { organizationId: 'org-1', name: 'Alpha', description: 'Desc' });
+  assert.throws(() => Team.validateCreate({ name: '' }), BadRequestException);
+  assert.throws(() => Team.validateCreate({ name: 'a'.repeat(161) }), BadRequestException);
+  const result = Team.validateCreate({ name: '  Alpha  ', description: '  Desc  ' });
+  assert.deepEqual(result, { name: 'Alpha', description: 'Desc' });
 });
 
 // --- CheckIn Model Domain Methods ---

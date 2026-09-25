@@ -40,14 +40,15 @@ class InMemoryUserRepository extends UserRepository {
   async updateGoogleAuth(): Promise<void> {}
 }
 
-test('UsersService.getMe retorna usuário autenticado', async () => {
+test('UsersService.getMe retorna usuário autenticado com role', async () => {
   const repo = new InMemoryUserRepository();
-  repo.users = [{ id: 'user-me', name: 'Gustavo', email: 'gustavo@nexo.com', createdAt: new Date(), updatedAt: new Date() }];
+  repo.users = [{ id: 'user-me', name: 'Gustavo', email: 'gustavo@nexo.com', role: 'ADMIN', createdAt: new Date(), updatedAt: new Date() }];
   const service = new UsersService(repo);
 
   const me = await service.getMe('user-me');
   assert.equal(me.id, 'user-me');
   assert.equal(me.email, 'gustavo@nexo.com');
+  assert.equal(me.role, 'ADMIN');
 });
 
 test('UsersService.getMe lança NotFoundException quando usuário não existe', async () => {
@@ -60,8 +61,8 @@ test('UsersService.getMe lança NotFoundException quando usuário não existe', 
 test('UsersService.list filtra usuários por busca textual', async () => {
   const repo = new InMemoryUserRepository();
   repo.users = [
-    { id: '1', name: 'Ryan Lirio', email: 'ryan@nexo.com', createdAt: new Date(), updatedAt: new Date() },
-    { id: '2', name: 'Gustavo Felicetti', email: 'gustavo@nexo.com', createdAt: new Date(), updatedAt: new Date() },
+    { id: '1', name: 'Ryan Lirio', email: 'ryan@nexo.com', role: 'MEMBER', createdAt: new Date(), updatedAt: new Date() },
+    { id: '2', name: 'Gustavo Felicetti', email: 'gustavo@nexo.com', role: 'ADMIN', createdAt: new Date(), updatedAt: new Date() },
   ];
   const service = new UsersService(repo);
 
@@ -72,7 +73,7 @@ test('UsersService.list filtra usuários por busca textual', async () => {
 
 test('UsersService.getMeProjects filtra projetos por relação leader', async () => {
   const repo = new InMemoryUserRepository();
-  repo.users = [{ id: 'u1', name: 'Líder', email: 'l@nexo.com', createdAt: new Date(), updatedAt: new Date() }];
+  repo.users = [{ id: 'u1', name: 'Líder', email: 'l@nexo.com', role: 'LEADER', createdAt: new Date(), updatedAt: new Date() }];
   repo.projects = [
     { id: 'p1', name: 'Proj 1', leaderId: 'u1', responsibleUserId: 'u2', status: 'ACTIVE' },
     { id: 'p2', name: 'Proj 2', leaderId: 'u2', responsibleUserId: 'u1', status: 'ACTIVE' },

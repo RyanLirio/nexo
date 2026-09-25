@@ -8,13 +8,9 @@ datasource db {
   provider = "postgresql"
 }
 
-enum TeamRole {
-  MEMBER
-  LEADER
-}
-
-enum OrganizationRole {
+enum UserRole {
   ADMIN
+  LEADER
   MEMBER
 }
 
@@ -45,11 +41,11 @@ model User {
   id                   String               @id @default(uuid())
   name                 String
   email                String               @unique
+  role                 UserRole             @default(MEMBER)
   googleSubject        String?              @unique
   avatarUrl            String?
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @default(now()) @updatedAt
-  organizations        OrganizationMember[]
   teams                TeamMember[]
   projects             ProjectMember[]
   createdProjects      Project[]            @relation("ProjectCreator")
@@ -65,46 +61,19 @@ model User {
   statusChanges        ProjectStatusHistory[]
 }
 
-model Organization {
-  id        String               @id @default(uuid())
-  name      String
-  domain    String?              @unique
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @default(now()) @updatedAt
-  members   OrganizationMember[]
-  teams     Team[]
-}
-
-model OrganizationMember {
-  organizationId String
-  userId         String
-  role           OrganizationRole @default(MEMBER)
-  joinedAt       DateTime         @default(now())
-  organization   Organization     @relation(fields: [organizationId], references: [id])
-  user           User             @relation(fields: [userId], references: [id])
-
-  @@id([organizationId, userId])
-  @@index([userId])
-}
-
 model Team {
-  id             String       @id @default(uuid())
-  organizationId String
-  name           String
-  description    String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @default(now()) @updatedAt
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  members        TeamMember[]
-  projects       Project[]
-
-  @@index([organizationId])
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @default(now()) @updatedAt
+  members     TeamMember[]
+  projects    Project[]
 }
 
 model TeamMember {
   teamId   String
   userId   String
-  role     TeamRole @default(MEMBER)
   joinedAt DateTime @default(now())
   team     Team     @relation(fields: [teamId], references: [id])
   user     User     @relation(fields: [userId], references: [id])

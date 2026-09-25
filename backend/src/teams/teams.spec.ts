@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { TeamMemberRecord, TeamRecord, TeamRepository } from './team.repository';
 import { TeamsService } from './teams.service';
 
@@ -17,10 +17,9 @@ class InMemoryTeamRepository extends TeamRepository {
     return this.teams.find(t => t.id === id) || null;
   }
 
-  async create(data: { organizationId: string; name: string; description?: string | null }): Promise<TeamRecord> {
+  async create(data: { name: string; description?: string | null }): Promise<TeamRecord> {
     const team: TeamRecord = {
       id: `team-${this.teams.length + 1}`,
-      organizationId: data.organizationId,
       name: data.name,
       description: data.description || null,
       createdAt: new Date(),
@@ -47,16 +46,14 @@ class InMemoryTeamRepository extends TeamRepository {
     return this.members.find(m => m.teamId === teamId && m.userId === userId) || null;
   }
 
-  async addMember(teamId: string, userId: string, role: 'MEMBER' | 'LEADER' = 'MEMBER'): Promise<TeamMemberRecord> {
+  async addMember(teamId: string, userId: string): Promise<TeamMemberRecord> {
     const existing = await this.findMember(teamId, userId);
     if (existing) {
-      existing.role = role;
       return existing;
     }
     const member: TeamMemberRecord = {
       teamId,
       userId,
-      role,
       joinedAt: new Date(),
     };
     this.members.push(member);
@@ -68,23 +65,23 @@ class InMemoryTeamRepository extends TeamRepository {
   }
 }
 
-test('TeamsService.create cria equipe com validação de dados', async () => {
+test('TeamsService.create cria equipe com validação de dados sem organizationId', async () => {
   const repo = new InMemoryTeamRepository();
   const service = new TeamsService(repo);
 
-  const team = await service.create({ organizationId: 'org-1', name: 'Engenharia', description: 'Time de Core' });
+  const team = await service.create({ name: 'Engenharia', description: 'Time de Core' });
   assert.equal(team.name, 'Engenharia');
-  assert.equal(team.organizationId, 'org-1');
+  assert.equal(team.description, 'Time de Core');
 });
 
-test('TeamsService.addMember adiciona membro com papel LEADER ou MEMBER', async () => {
+test('TeamsService.addMember adiciona membro à equipe', async () => {
   const repo = new InMemoryTeamRepository();
-  repo.teams = [{ id: 't1', organizationId: 'org-1', name: 'Design', createdAt: new Date(), updatedAt: new Date() }];
+  repo.teams = [{ id: 't1', name: 'Design', createdAt: new Date(), updatedAt: new Date() }];
   const service = new TeamsService(repo);
 
-  const member = await service.addMember('t1', { userId: 'u1', role: 'LEADER' });
+  const member = await service.addMember('t1', { userId: 'u1' });
   assert.equal(member.userId, 'u1');
-  assert.equal(member.role, 'LEADER');
+  assert.equal(member.teamId, 't1');
 });
 
 test('TeamsService.addMember rejeita equipe inexistente', async () => {
@@ -96,8 +93,8 @@ test('TeamsService.addMember rejeita equipe inexistente', async () => {
 
 test('TeamsService.removeMember remove usuário da equipe', async () => {
   const repo = new InMemoryTeamRepository();
-  repo.teams = [{ id: 't1', organizationId: 'org-1', name: 'Design', createdAt: new Date(), updatedAt: new Date() }];
-  repo.members = [{ teamId: 't1', userId: 'u1', role: 'MEMBER', joinedAt: new Date() }];
+  repo.teams = [{ id: 't1', name: 'Design', createdAt: new Date(), updatedAt: new Date() }];
+  repo.members = [{ teamId: 't1', userId: 'u1', joinedAt: new Date() }];
   const service = new TeamsService(repo);
 
   await service.removeMember('t1', 'u1');

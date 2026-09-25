@@ -20,10 +20,9 @@ export class PrismaTeamRepository extends TeamRepository {
     });
   }
 
-  async create(data: { organizationId: string; name: string; description?: string | null }): Promise<TeamRecord> {
+  async create(data: { name: string; description?: string | null }): Promise<TeamRecord> {
     return this.prisma.team.create({
       data: {
-        organizationId: data.organizationId,
         name: data.name,
         description: data.description,
       },
@@ -61,7 +60,7 @@ export class PrismaTeamRepository extends TeamRepository {
     });
   }
 
-  async addMember(teamId: string, userId: string, role: 'MEMBER' | 'LEADER' = 'MEMBER'): Promise<TeamMemberRecord> {
+  async addMember(teamId: string, userId: string): Promise<TeamMemberRecord> {
     return this.prisma.teamMember.upsert({
       where: {
         teamId_userId: { teamId, userId },
@@ -69,11 +68,8 @@ export class PrismaTeamRepository extends TeamRepository {
       create: {
         teamId,
         userId,
-        role,
       },
-      update: {
-        role,
-      },
+      update: {},
       include: {
         user: { select: { id: true, name: true, email: true } },
       },

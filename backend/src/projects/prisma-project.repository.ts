@@ -12,7 +12,7 @@ export class PrismaProjectRepository extends ProjectRepository {
     return this.prisma.project.findUnique({
       where: { id },
       include: {
-        team: { select: { id: true, name: true, organizationId: true } },
+        team: { select: { id: true, name: true } },
         leader: { select: { id: true, name: true } },
         responsibleUser: { select: { id: true, name: true } },
         members: { include: { user: { select: { id: true, name: true } } } },

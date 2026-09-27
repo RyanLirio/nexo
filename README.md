@@ -95,6 +95,8 @@ O Compose lê o `.env` da raiz. O backend e o Prisma carregam `backend/.env` com
 
 `NEXT_PUBLIC_API_BASE_URL` fica reservado para a integração futura. Variáveis com `NEXT_PUBLIC_` podem aparecer no navegador: nunca coloque segredos nelas. Reinicie os servidores após mudar configurações; valores públicos do Next.js também exigem nova compilação para produção.
 
+Para o login Google, crie uma credencial OAuth 2.0 do tipo **Aplicativo da Web** no Google Cloud, adicione `http://localhost:3000` às origens JavaScript autorizadas e use o mesmo identificador em `GOOGLE_CLIENT_ID` (backend) e `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (frontend). O identificador do cliente é público; não coloque o segredo OAuth no frontend. Defina `SEED_MEMBER_EMAIL` com o e-mail Google que poderá entrar e execute o seed novamente. O Nexo mantém a política de permitir somente usuários previamente cadastrados.
+
 Arquivos `.env` reais ficam fora do Git. Apenas os exemplos são versionados.
 
 ## Iniciar o banco com Docker
@@ -186,7 +188,7 @@ npm ci
 npm run dev
 ```
 
-Abra [http://localhost:3000](http://localhost:3000). O frontend funciona de forma independente e ainda não consome a API.
+Abra [http://localhost:3000](http://localhost:3000). O frontend usa a API para autenticar com Google; as demais telas ainda usam dados fictícios.
 
 Para conferir a compilação:
 
@@ -204,7 +206,7 @@ O modelo v2 adiciona `Organization` e `OrganizationMember`, liga equipes à orga
 
 A API oferece rotas iniciais para projetos, check-ins, conhecimento e pedidos de ajuda; seus contratos estão em [docs/estado-atual.md](docs/estado-atual.md). Ela **não tem autenticação**: IDs enviados pelo cliente não provam identidade e não devem ser tratados como permissão de produção.
 
-O frontend continua usando dados fictícios, sem chamadas à API. Não há IA nem MCP implementados. As decisões de interface estão documentadas em [pesquisa de UX](docs/ux-research.md) e [auditoria](docs/ux-audit.md).
+O frontend usa a API no login e continua usando dados fictícios nas demais telas. Não há IA nem MCP implementados. As decisões de interface estão documentadas em [pesquisa de UX](docs/ux-research.md) e [auditoria](docs/ux-audit.md).
 
 ## Onde continuar
 

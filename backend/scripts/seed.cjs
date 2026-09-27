@@ -9,6 +9,7 @@ if (!connectionString) {
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 const demoDate = new Date('2026-09-21T12:00:00.000Z');
+const memberEmail = process.env.SEED_MEMBER_EMAIL?.trim().toLowerCase() || 'ryan@example.invalid';
 
 async function seed() {
   await prisma.$transaction(async (db) => {
@@ -16,7 +17,7 @@ async function seed() {
     const users = [
       { id: 'demo-gustavo', name: 'Gustavo Felicetti', email: 'gustavo@example.invalid', role: 'ADMIN' },
       { id: 'demo-marina', name: 'Marina Demo', email: 'marina@example.invalid', role: 'LEADER' },
-      { id: 'demo-ryan', name: 'Ryan Demo', email: 'ryan@example.invalid', role: 'MEMBER' },
+      { id: 'demo-ryan', name: 'Ryan Demo', email: memberEmail, role: 'MEMBER' },
       { id: 'demo-joao', name: 'João Demo', email: 'joao@example.invalid', role: 'MEMBER' },
     ];
 

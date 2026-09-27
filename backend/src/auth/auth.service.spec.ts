@@ -1,10 +1,10 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import { AuthService } from './auth.service';
-import { GooglePayload, GoogleTokenVerifier } from './google-verifier';
+import { GoogleAuthLibraryVerifier, GooglePayload, GoogleTokenVerifier } from './google-verifier';
 import { UserRecord, UserRepository } from '../users/user.repository';
 
 class MockGoogleVerifier implements GoogleTokenVerifier {
@@ -60,6 +60,19 @@ class MockUserRepository extends UserRepository {
 
 const JWT_SECRET = 'test_secret_key_12345';
 
+test('GoogleAuthLibraryVerifier informa quando o client ID não está configurado', async () => {
+  const originalClientId = process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_ID;
+
+  try {
+    const verifier = new GoogleAuthLibraryVerifier();
+    await assert.rejects(() => verifier.verify('token'), ServiceUnavailableException);
+  } finally {
+    if (originalClientId === undefined) delete process.env.GOOGLE_CLIENT_ID;
+    else process.env.GOOGLE_CLIENT_ID = originalClientId;
+  }
+});
+
 test('AuthService.loginWithGoogle autentica usuário pré-cadastrado e emite JWT válido', async () => {
   const repo = new MockUserRepository();
   repo.users.push({
@@ -81,6 +94,7 @@ test('AuthService.loginWithGoogle autentica usuário pré-cadastrado e emite JWT
   assert.ok(result.accessToken);
   assert.equal(result.user.id, 'user-1');
   assert.equal(result.user.email, 'gustavo@nexo.com');
+  assert.equal(result.user.role, 'MEMBER');
 
   const decoded = jwt.verify(result.accessToken, JWT_SECRET) as { sub: string; email: string };
   assert.equal(decoded.sub, 'user-1');
@@ -145,6 +159,7 @@ test('AuthService.devLogin autentica usuário cadastrado em ambiente não produt
     const result = await service.devLogin('dev@nexo.com');
     assert.ok(result.accessToken);
     assert.equal(result.user.id, 'user-dev-1');
+    assert.equal(result.user.role, 'MEMBER');
 
     const decoded = jwt.verify(result.accessToken, JWT_SECRET) as { sub: string };
     assert.equal(decoded.sub, 'user-dev-1');

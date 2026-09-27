@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { OAuth2Client } from 'google-auth-library';
 
 export interface GooglePayload {
@@ -24,10 +24,14 @@ export class GoogleAuthLibraryVerifier extends GoogleTokenVerifier {
   }
 
   async verify(idToken: string): Promise<GooglePayload> {
+    if (!this.clientId) {
+      throw new ServiceUnavailableException('Login com Google não configurado no servidor.');
+    }
+
     try {
       const ticket = await this.client.verifyIdToken({
         idToken,
-        audience: this.clientId || undefined,
+        audience: this.clientId,
       });
 
       const payload = ticket.getPayload();
@@ -42,7 +46,7 @@ export class GoogleAuthLibraryVerifier extends GoogleTokenVerifier {
         picture: payload.picture,
       };
     } catch (err: any) {
-      if (err instanceof UnauthorizedException) {
+      if (err instanceof UnauthorizedException || err instanceof ServiceUnavailableException) {
         throw err;
       }
       throw new UnauthorizedException(`Falha ao validar credencial do Google: ${err.message}`);

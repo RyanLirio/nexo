@@ -16,6 +16,7 @@ export interface AuthResponse {
     id: string;
     email: string;
     name: string;
+    role: string;
     avatarUrl?: string | null;
   };
 }
@@ -67,6 +68,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         name: payload.name || user.name,
+        role: user.role,
         avatarUrl: payload.picture ?? user.avatarUrl,
       },
     };
@@ -94,6 +96,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         name: user.name,
+        role: user.role,
         avatarUrl: user.avatarUrl,
       },
     };

@@ -34,7 +34,7 @@ export class KnowledgeService {
     }
     const title = requiredText(body, 'title', 160);
     const problem = requiredText(body, 'problem');
-    const solution = requiredText(body, 'solution');
+    const solution = optionalText(body, 'solution');
     const technology = optionalText(body, 'technology', 160);
     const sourceCheckInId = optionalText(body, 'sourceCheckInId', 100);
     const sourceHelpRequestId = optionalText(body, 'sourceHelpRequestId', 100);

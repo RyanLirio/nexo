@@ -52,7 +52,7 @@ export class PrismaKnowledgeRepository extends KnowledgeRepository {
     authorId: string;
     title: string;
     problem: string;
-    solution: string;
+    solution?: string | null;
     technology?: string | null;
     sourceCheckInId?: string | null;
     sourceHelpRequestId?: string | null;

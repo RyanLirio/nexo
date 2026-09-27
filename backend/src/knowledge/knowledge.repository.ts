@@ -5,7 +5,7 @@ export interface KnowledgeEntryRecord {
   title: string;
   problem: string;
   technology?: string | null;
-  solution: string;
+  solution?: string | null;
   sharingAuthorizedBy?: string | null;
   sharingAuthorizedAt?: Date | null;
   sourceCheckInId?: string | null;
@@ -24,7 +24,7 @@ export abstract class KnowledgeRepository {
     authorId: string;
     title: string;
     problem: string;
-    solution: string;
+    solution?: string | null;
     technology?: string | null;
     sourceCheckInId?: string | null;
     sourceHelpRequestId?: string | null;

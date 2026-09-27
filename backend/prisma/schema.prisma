@@ -211,7 +211,7 @@ model KnowledgeEntry {
   title               String
   problem             String
   technology          String?
-  solution            String
+  solution            String?
   sharingAuthorizedAt DateTime?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @default(now()) @updatedAt

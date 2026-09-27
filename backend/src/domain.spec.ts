@@ -82,6 +82,53 @@ test('rejeita criação de conhecimento com duas origens simultâneas', async ()
   );
 });
 
+test('cria conhecimento com problema mesmo sem solução', async () => {
+  let saved: Record<string, unknown> | undefined;
+  const repo = {
+    projectExists: async () => true,
+    isProjectMember: async () => true,
+    create: async (data: Record<string, unknown>) => {
+      saved = data;
+      return { id: 'know-pending', ...data } as any;
+    },
+  } as unknown as import('./knowledge/knowledge.repository').KnowledgeRepository;
+  const service = new KnowledgeService(repo);
+
+  await service.create({
+    projectId: 'project-1',
+    authorId: 'user-1',
+    title: 'Falha ainda em análise',
+    problem: 'A integração retorna timeout de forma intermitente.',
+  });
+
+  assert.equal(saved?.problem, 'A integração retorna timeout de forma intermitente.');
+  assert.equal(saved?.solution, null);
+});
+
+test('continua criando conhecimento com problema e solução', async () => {
+  let saved: Record<string, unknown> | undefined;
+  const repo = {
+    projectExists: async () => true,
+    isProjectMember: async () => true,
+    create: async (data: Record<string, unknown>) => {
+      saved = data;
+      return { id: 'know-solved', ...data } as any;
+    },
+  } as unknown as import('./knowledge/knowledge.repository').KnowledgeRepository;
+  const service = new KnowledgeService(repo);
+
+  await service.create({
+    projectId: 'project-1',
+    authorId: 'user-1',
+    title: 'Timeout resolvido',
+    problem: 'A integração retornava timeout.',
+    solution: '  Ajustar o tempo limite do cliente HTTP.  ',
+  });
+
+  assert.equal(saved?.problem, 'A integração retornava timeout.');
+  assert.equal(saved?.solution, 'Ajustar o tempo limite do cliente HTTP.');
+});
+
 test('autorização de conhecimento preenche autorizador e timestamp juntos', async () => {
   let authorizedCall: { id: string; authorId: string; date: Date } | undefined;
   const repo = {
@@ -349,6 +396,17 @@ test('KnowledgeEntry.isAuthorized reflete estado de autorização', () => {
   });
   assert.equal(authorized.isAuthorized, true);
   assert.equal(pending.isAuthorized, false);
+});
+
+test('KnowledgeEntry aceita problema sem solução conhecida', () => {
+  const now = new Date();
+  const entry = new KnowledgeEntry({
+    id: 'k-pending', projectId: 'p1', authorId: 'u1', title: 'Em análise', problem: 'Falha intermitente',
+    createdAt: now, updatedAt: now,
+  });
+
+  assert.equal(entry.problem, 'Falha intermitente');
+  assert.equal(entry.solution, null);
 });
 
 test('KnowledgeEntry.hasDualSource detecta origens conflitantes', () => {

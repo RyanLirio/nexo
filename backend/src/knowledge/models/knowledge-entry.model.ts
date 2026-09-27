@@ -13,7 +13,7 @@ export class KnowledgeEntry {
   readonly title: string;
   readonly problem: string;
   readonly technology: string | null;
-  readonly solution: string;
+  readonly solution: string | null;
   readonly sharingAuthorizedBy: string | null;
   readonly sharingAuthorizedAt: Date | null;
   readonly sourceCheckInId: string | null;
@@ -28,7 +28,7 @@ export class KnowledgeEntry {
     title: string;
     problem: string;
     technology?: string | null;
-    solution: string;
+    solution?: string | null;
     sharingAuthorizedBy?: string | null;
     sharingAuthorizedAt?: Date | null;
     sourceCheckInId?: string | null;
@@ -42,7 +42,7 @@ export class KnowledgeEntry {
     this.title = props.title;
     this.problem = props.problem;
     this.technology = props.technology ?? null;
-    this.solution = props.solution;
+    this.solution = props.solution ?? null;
     this.sharingAuthorizedBy = props.sharingAuthorizedBy ?? null;
     this.sharingAuthorizedAt = props.sharingAuthorizedAt ?? null;
     this.sourceCheckInId = props.sourceCheckInId ?? null;

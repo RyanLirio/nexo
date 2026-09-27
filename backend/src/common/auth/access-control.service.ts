@@ -14,13 +14,11 @@ export class PrismaAccessControlService extends AccessControlService {
   }
 
   async isAdmin(userId: string): Promise<boolean> {
-    const adminMembership = await this.prisma.organizationMember.findFirst({
-      where: {
-        userId,
-        role: 'ADMIN',
-      },
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
     });
-    return Boolean(adminMembership);
+    return user?.role === 'ADMIN';
   }
 
   async isTeamMember(userId: string, teamId: string): Promise<boolean> {
@@ -37,7 +35,10 @@ export class PrismaAccessControlService extends AccessControlService {
       where: {
         teamId_userId: { teamId, userId },
       },
+      select: {
+        user: { select: { role: true } },
+      },
     });
-    return membership?.role === 'LEADER';
+    return membership?.user.role === 'LEADER';
   }
 }

@@ -66,6 +66,7 @@ test('AuthService.loginWithGoogle autentica usuário pré-cadastrado e emite JWT
     id: 'user-1',
     name: 'Gustavo Felicetti',
     email: 'gustavo@nexo.com',
+    role: 'MEMBER',
     avatarUrl: null,
     googleSubject: null,
     createdAt: new Date(),
@@ -110,6 +111,7 @@ test('AuthService.loginWithGoogle rejeita token inválido com UnauthorizedExcept
     id: 'user-1',
     name: 'Gustavo',
     email: 'gustavo@nexo.com',
+    role: 'MEMBER',
     createdAt: new Date(),
     updatedAt: new Date(),
   });
@@ -132,6 +134,7 @@ test('AuthService.devLogin autentica usuário cadastrado em ambiente não produt
       id: 'user-dev-1',
       name: 'Dev User',
       email: 'dev@nexo.com',
+      role: 'MEMBER',
       createdAt: new Date(),
       updatedAt: new Date(),
     });

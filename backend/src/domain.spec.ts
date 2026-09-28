@@ -4,14 +4,14 @@ import test from 'node:test';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CheckInsService } from './check-ins/check-ins.service';
 import { HelpRequestsService } from './help-requests/help-requests.service';
-import { KnowledgeService } from './knowledge/knowledge.service';
+import { TechnicalProblemService } from './technical-problems/technical-problem.service';
 import { ProjectsService } from './projects/projects.service';
 import { PrismaService } from './prisma.service';
 import { User, UserRole } from './users/models';
 import { Team, TeamMember } from './teams/models';
 import { Project, ProjectMember, ProjectStatus, ProjectRole, VALID_PROJECT_STATUSES } from './projects/models';
 import { CheckIn } from './check-ins/models';
-import { KnowledgeEntry } from './knowledge/models';
+import { TechnicalProblem } from './technical-problems/models';
 import { HelpRequest, HelpStatus, HELP_STATUS_TRANSITIONS } from './help-requests/models';
 
 
@@ -47,26 +47,26 @@ test('não cria check-in em projeto inexistente', async () => {
   );
 });
 
-test('busca de conhecimento exige autorização de compartilhamento', async () => {
+test('busca de problemas técnicos exige autorização de compartilhamento', async () => {
   let queryCaptured: string | undefined;
   const repo = {
     list: async (query?: string) => {
       queryCaptured = query;
       return [];
     },
-  } as unknown as import('./knowledge/knowledge.repository').KnowledgeRepository;
-  const service = new KnowledgeService(repo);
+  } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
+  const service = new TechnicalProblemService(repo);
 
   await service.list('porta');
   assert.equal(queryCaptured, 'porta');
 });
 
-test('rejeita criação de conhecimento com duas origens simultâneas', async () => {
+test('rejeita criação de problema técnico com duas origens simultâneas', async () => {
   const repo = {
     projectExists: async () => true,
     isProjectMember: async () => true,
-  } as unknown as import('./knowledge/knowledge.repository').KnowledgeRepository;
-  const service = new KnowledgeService(repo);
+  } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
+  const service = new TechnicalProblemService(repo);
 
   await assert.rejects(
     service.create({
@@ -82,7 +82,7 @@ test('rejeita criação de conhecimento com duas origens simultâneas', async ()
   );
 });
 
-test('cria conhecimento com problema mesmo sem solução', async () => {
+test('cria problema técnico mesmo sem solução', async () => {
   let saved: Record<string, unknown> | undefined;
   const repo = {
     projectExists: async () => true,
@@ -91,8 +91,8 @@ test('cria conhecimento com problema mesmo sem solução', async () => {
       saved = data;
       return { id: 'know-pending', ...data } as any;
     },
-  } as unknown as import('./knowledge/knowledge.repository').KnowledgeRepository;
-  const service = new KnowledgeService(repo);
+  } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
+  const service = new TechnicalProblemService(repo);
 
   await service.create({
     projectId: 'project-1',
@@ -105,7 +105,7 @@ test('cria conhecimento com problema mesmo sem solução', async () => {
   assert.equal(saved?.solution, null);
 });
 
-test('continua criando conhecimento com problema e solução', async () => {
+test('continua criando problema técnico com problema e solução', async () => {
   let saved: Record<string, unknown> | undefined;
   const repo = {
     projectExists: async () => true,
@@ -114,8 +114,8 @@ test('continua criando conhecimento com problema e solução', async () => {
       saved = data;
       return { id: 'know-solved', ...data } as any;
     },
-  } as unknown as import('./knowledge/knowledge.repository').KnowledgeRepository;
-  const service = new KnowledgeService(repo);
+  } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
+  const service = new TechnicalProblemService(repo);
 
   await service.create({
     projectId: 'project-1',
@@ -129,7 +129,7 @@ test('continua criando conhecimento com problema e solução', async () => {
   assert.equal(saved?.solution, 'Ajustar o tempo limite do cliente HTTP.');
 });
 
-test('autorização de conhecimento preenche autorizador e timestamp juntos', async () => {
+test('autorização de problema técnico preenche autorizador e timestamp juntos', async () => {
   let authorizedCall: { id: string; authorId: string; date: Date } | undefined;
   const repo = {
     findById: async () => ({ id: 'know-1', authorId: 'user-1', sharingAuthorizedAt: null }),
@@ -137,8 +137,8 @@ test('autorização de conhecimento preenche autorizador e timestamp juntos', as
       authorizedCall = { id, authorId, date };
       return { id, authorId, sharingAuthorizedBy: authorId, sharingAuthorizedAt: date } as any;
     },
-  } as unknown as import('./knowledge/knowledge.repository').KnowledgeRepository;
-  const service = new KnowledgeService(repo);
+  } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
+  const service = new TechnicalProblemService(repo);
 
   await service.authorize('know-1', { authorId: 'user-1' });
 
@@ -147,11 +147,11 @@ test('autorização de conhecimento preenche autorizador e timestamp juntos', as
   assert.ok(authorizedCall?.date instanceof Date);
 });
 
-test('rejeita autorização de conhecimento feita por outro usuário que não seja o autor', async () => {
+test('rejeita autorização de problema técnico feita por outro usuário que não seja o autor', async () => {
   const repo = {
     findById: async () => ({ id: 'know-1', authorId: 'user-ryan', sharingAuthorizedAt: null }),
-  } as unknown as import('./knowledge/knowledge.repository').KnowledgeRepository;
-  const service = new KnowledgeService(repo);
+  } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
+  const service = new TechnicalProblemService(repo);
 
   await assert.rejects(
     service.authorize('know-1', { authorId: 'user-gustavo' }),
@@ -383,14 +383,14 @@ test('CheckIn.hasDifficulties detecta campo preenchido ou vazio', () => {
   assert.equal(emptyDiff.hasDifficulties, false);
 });
 
-// --- KnowledgeEntry Model ---
-test('KnowledgeEntry.isAuthorized reflete estado de autorização', () => {
+// --- TechnicalProblem Model ---
+test('TechnicalProblem.isAuthorized reflete estado de autorização', () => {
   const now = new Date();
-  const authorized = new KnowledgeEntry({
+  const authorized = new TechnicalProblem({
     id: 'k1', projectId: 'p1', authorId: 'u1', title: 'T', problem: 'P', solution: 'S',
     sharingAuthorizedAt: now, sharingAuthorizedBy: 'u1', createdAt: now, updatedAt: now,
   });
-  const pending = new KnowledgeEntry({
+  const pending = new TechnicalProblem({
     id: 'k2', projectId: 'p1', authorId: 'u1', title: 'T', problem: 'P', solution: 'S',
     createdAt: now, updatedAt: now,
   });
@@ -398,24 +398,25 @@ test('KnowledgeEntry.isAuthorized reflete estado de autorização', () => {
   assert.equal(pending.isAuthorized, false);
 });
 
-test('KnowledgeEntry aceita problema sem solução conhecida', () => {
+test('TechnicalProblem aceita problema sem solução conhecida', () => {
   const now = new Date();
-  const entry = new KnowledgeEntry({
+  const entry = new TechnicalProblem({
     id: 'k-pending', projectId: 'p1', authorId: 'u1', title: 'Em análise', problem: 'Falha intermitente',
     createdAt: now, updatedAt: now,
   });
 
   assert.equal(entry.problem, 'Falha intermitente');
+  assert.equal(entry.problemEmbedding, null);
   assert.equal(entry.solution, null);
 });
 
-test('KnowledgeEntry.hasDualSource detecta origens conflitantes', () => {
+test('TechnicalProblem.hasDualSource detecta origens conflitantes', () => {
   const now = new Date();
-  const dual = new KnowledgeEntry({
+  const dual = new TechnicalProblem({
     id: 'k1', projectId: 'p1', authorId: 'u1', title: 'T', problem: 'P', solution: 'S',
     sourceCheckInId: 'c1', sourceHelpRequestId: 'h1', createdAt: now, updatedAt: now,
   });
-  const single = new KnowledgeEntry({
+  const single = new TechnicalProblem({
     id: 'k2', projectId: 'p1', authorId: 'u1', title: 'T', problem: 'P', solution: 'S',
     sourceCheckInId: 'c1', createdAt: now, updatedAt: now,
   });
@@ -512,21 +513,21 @@ test('CheckIn.validateCreate valida resumo e filtra messageIds', () => {
   });
 });
 
-// --- KnowledgeEntry Model Domain Methods ---
-test('KnowledgeEntry.validateSources rejeita origens simultâneas', () => {
-  assert.throws(() => KnowledgeEntry.validateSources('checkin-1', 'help-1'), BadRequestException);
-  assert.doesNotThrow(() => KnowledgeEntry.validateSources('checkin-1', undefined));
-  assert.doesNotThrow(() => KnowledgeEntry.validateSources(undefined, 'help-1'));
-  assert.doesNotThrow(() => KnowledgeEntry.validateSources(undefined, undefined));
+// --- TechnicalProblem Model Domain Methods ---
+test('TechnicalProblem.validateSources rejeita origens simultâneas', () => {
+  assert.throws(() => TechnicalProblem.validateSources('checkin-1', 'help-1'), BadRequestException);
+  assert.doesNotThrow(() => TechnicalProblem.validateSources('checkin-1', undefined));
+  assert.doesNotThrow(() => TechnicalProblem.validateSources(undefined, 'help-1'));
+  assert.doesNotThrow(() => TechnicalProblem.validateSources(undefined, undefined));
 });
 
-test('KnowledgeEntry.validateAuthorization garante integridade de autor', () => {
+test('TechnicalProblem.validateAuthorization garante integridade de autor', () => {
   const entry = { authorId: 'user-1', sharingAuthorizedAt: null, sharingAuthorizedBy: null };
-  assert.throws(() => KnowledgeEntry.validateAuthorization(entry, 'user-2'), ForbiddenException);
-  assert.equal(KnowledgeEntry.validateAuthorization(entry, 'user-1'), true);
+  assert.throws(() => TechnicalProblem.validateAuthorization(entry, 'user-2'), ForbiddenException);
+  assert.equal(TechnicalProblem.validateAuthorization(entry, 'user-1'), true);
 
   const authorizedEntry = { authorId: 'user-1', sharingAuthorizedAt: new Date(), sharingAuthorizedBy: 'user-1' };
-  assert.equal(KnowledgeEntry.validateAuthorization(authorizedEntry, 'user-1'), false);
+  assert.equal(TechnicalProblem.validateAuthorization(authorizedEntry, 'user-1'), false);
 });
 
 // --- HelpRequest Model Domain Methods ---

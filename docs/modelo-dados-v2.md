@@ -12,16 +12,17 @@ Este modelo organiza contexto por organização, equipe e projeto. O nome `Check
 | `Project` | Projeto de uma equipe, com descrição e estado `PLANNING`, `ACTIVE`, `PAUSED` ou `COMPLETED`. |
 | `ProjectMember` | Associação pessoa–projeto com papel `OWNER` (responsável principal) ou `MEMBER`. |
 | `CheckIn` | Registro estruturado de avanço/resumo, dificuldade e próximos passos, vinculado a projeto e autor. A conversa que poderá produzi-lo ainda não é persistida. |
-| `KnowledgeEntry` | Problema e solução técnica, autor, projeto e `CheckIn` de origem opcional. Várias soluções podem nascer de um mesmo check-in. |
+| `TechnicalProblem` | Problema técnico, solução opcional, autor, projeto e origens opcionais em `CheckIn` ou `HelpRequest`. `problemEmbedding` aceita opcionalmente `vector(1536)` para representar somente o texto de `problem`. |
 | `HelpRequest` | Pedido ligado a projeto, solicitante, ajudante opcional, estado e data opcional de resolução. |
 
 ## Decisões e limites
 
 - `Organization` separa os dados de empresas; equipe pertence a uma organização. A API futura terá de aplicar isolamento por organização após autenticação.
 - Tabelas de associação registram papéis no contexto certo e evitam um campo “líder” global.
-- `sharingAuthorizedAt = null` significa solução **não compartilhada**. A busca pública do protótipo de API deve consultar apenas entradas autorizadas.
+- `sharingAuthorizedAt = null` significa problema técnico **não compartilhado**. A consulta deve retornar apenas registros autorizados.
 - `sourceCheckInId` é opcional para permitir registro manual. Não recebe unicidade.
 - A migration coloca equipes antigas em `Nexo Legacy` e preserva seus membros. Soluções antigas sem projeto não podem ser associadas com segurança: a migration interrompe a transação com uma mensagem explícita se encontrar alguma. Nesse caso, Gustavo e a equipe devem mapear esses registros antes de aplicar v2. Nenhum dado é apagado silenciosamente.
-- Índices seguem consultas previstas: equipe por organização, projeto por equipe, check-ins por projeto/autor e data, conhecimento por projeto/autor/autorização, ajuda por projeto/solicitante e status.
-- Como não há autenticação, IDs enviados pelo cliente identificam apenas dados de desenvolvimento. Essas rotas não oferecem segurança contra falsificação de identidade.
-- Fora deste modelo: mensagens de chat, OAuth, embeddings, rankings, indicadores pessoais e MCP.
+- Índices seguem consultas previstas: equipe por organização, projeto por equipe, check-ins por projeto/autor e data, problemas técnicos por projeto/autor/autorização, ajuda por projeto/solicitante e status.
+- A API possui autenticação JWT, mas alguns contratos de desenvolvimento ainda aceitam IDs explícitos no corpo. Esses campos deverão ser removidos quando todas as telas usarem exclusivamente a identidade autenticada.
+- `problemEmbedding` é opcional e fica reservado ao embedding de `problem`. A geração do vetor, busca por similaridade e índices vetoriais ficam fora desta etapa.
+- Fora deste modelo: geração automática de embeddings, busca vetorial, rankings, indicadores pessoais e MCP.

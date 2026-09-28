@@ -1,16 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { KnowledgeEntryRecord, KnowledgeRepository } from './knowledge.repository';
+import { TechnicalProblemRecord, TechnicalProblemRepository } from './technical-problem.repository';
 
 @Injectable()
-export class PrismaKnowledgeRepository extends KnowledgeRepository {
+export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository {
   constructor(private readonly prisma: PrismaService) {
     super();
   }
 
   async list(query?: string, projectId?: string): Promise<any[]> {
     const term = query?.trim();
-    return this.prisma.knowledgeEntry.findMany({
+    return this.prisma.technicalProblem.findMany({
       where: {
         sharingAuthorizedAt: { not: null },
         ...(projectId ? { projectId } : {}),
@@ -38,7 +38,7 @@ export class PrismaKnowledgeRepository extends KnowledgeRepository {
   }
 
   async findById(id: string): Promise<any | null> {
-    return this.prisma.knowledgeEntry.findUnique({
+    return this.prisma.technicalProblem.findUnique({
       where: { id },
       include: {
         author: { select: { id: true, name: true } },
@@ -56,8 +56,8 @@ export class PrismaKnowledgeRepository extends KnowledgeRepository {
     technology?: string | null;
     sourceCheckInId?: string | null;
     sourceHelpRequestId?: string | null;
-  }): Promise<KnowledgeEntryRecord> {
-    return this.prisma.knowledgeEntry.create({
+  }): Promise<TechnicalProblemRecord> {
+    return this.prisma.technicalProblem.create({
       data: {
         projectId: data.projectId,
         authorId: data.authorId,
@@ -68,17 +68,17 @@ export class PrismaKnowledgeRepository extends KnowledgeRepository {
         sourceCheckInId: data.sourceCheckInId,
         sourceHelpRequestId: data.sourceHelpRequestId,
       },
-    }) as unknown as KnowledgeEntryRecord;
+    }) as unknown as TechnicalProblemRecord;
   }
 
-  async authorize(id: string, authorId: string, authorizedAt: Date): Promise<KnowledgeEntryRecord> {
-    return this.prisma.knowledgeEntry.update({
+  async authorize(id: string, authorId: string, authorizedAt: Date): Promise<TechnicalProblemRecord> {
+    return this.prisma.technicalProblem.update({
       where: { id },
       data: {
         sharingAuthorizedBy: authorId,
         sharingAuthorizedAt: authorizedAt,
       },
-    }) as unknown as KnowledgeEntryRecord;
+    }) as unknown as TechnicalProblemRecord;
   }
 
   async projectExists(projectId: string): Promise<boolean> {

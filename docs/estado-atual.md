@@ -4,9 +4,9 @@
 
 - Frontend navegável em `/`, `/login`, `/colaborador`, `/lider` e `/projetos/[id]`.
 - Conversa demonstrativa: enviar adiciona uma mensagem na tela, sem persistência.
-- Backend NestJS compilado com rotas de leitura de projetos, criação e leitura de check-ins, consulta e registro de conhecimento e pedidos de ajuda.
+- Backend NestJS compilado com rotas de leitura de projetos, criação e leitura de check-ins, consulta e registro de problemas técnicos e pedidos de ajuda.
 - Schema Prisma v2 validado. A nova migration está versionada e preserva a migration inicial.
-- Seed repetível para um banco de desenvolvimento, com organização, equipe, pessoas, projetos, contexto, conhecimento autorizado/privado e pedido de ajuda.
+- Seed repetível para um banco de desenvolvimento, com equipe, pessoas, projetos, contexto, problemas técnicos autorizados/privados e pedido de ajuda.
 
 ## Rotas de desenvolvimento
 
@@ -18,10 +18,10 @@
 | `GET /teams/:teamId/projects` | Projetos de uma equipe. |
 | `GET /projects/:projectId/check-ins` | Até 50 atualizações recentes. |
 | `POST /projects/:projectId/check-ins` | Cria atualização após validar campos e vínculo do usuário. |
-| `GET /knowledge?q=...` | Busca textual em título, problema, tecnologia e solução; retorna só entradas autorizadas. |
-| `GET /knowledge/:id` | Detalhe de uma entrada autorizada. |
-| `POST /knowledge` | Cria entrada privada; valida autor e projeto de origem. |
-| `PATCH /knowledge/:id/authorize` | Registra autorização declarada pelo autor informado. |
+| `GET /technical-problems?query=...` | Busca textual em título, problema, tecnologia e solução; retorna só problemas autorizados. |
+| `GET /technical-problems/:id` | Detalhe de um problema técnico autorizado. |
+| `POST /technical-problems` | Cria problema técnico privado; valida autor e projeto de origem. |
+| `PATCH /technical-problems/:id/authorize` | Registra autorização declarada pelo autor informado. |
 | `GET /projects/:projectId/help-requests` | Até 50 pedidos recentes do projeto. |
 | `POST /projects/:projectId/help-requests` | Cria pedido após validar solicitante e ajudante. |
 | `PATCH /help-requests/:id/status` | Avança estado até `RESOLVED` e preenche `resolvedAt`. |
@@ -34,7 +34,7 @@ POST /projects/:projectId/check-ins
 ```
 
 ```text
-POST /knowledge
+POST /technical-problems
 {"projectId":"demo-financeiro","authorId":"demo-marina","title":"Porta da integração","problem":"Falha de comunicação","solution":"Corrigir a porta"}
 ```
 
@@ -48,14 +48,14 @@ PATCH /help-requests/:id/status
 {"status":"IN_PROGRESS"}
 ```
 
-Para autorizar uma entrada, envie `{"authorId":"demo-marina"}` em `PATCH /knowledge/:id/authorize`. Isso **não é autenticação**: qualquer cliente pode alegar esse ID. As rotas são para desenvolvimento local e não devem ser expostas publicamente até haver autenticação e autorização no servidor.
+Para autorizar um problema técnico, envie `{"authorId":"demo-marina"}` em `PATCH /technical-problems/:id/authorize`.
 
 ## O que ainda é simulado
 
-- O botão “Continuar com Google” apenas navega para o colaborador.
+- O login Google está integrado, mas depende de `GOOGLE_CLIENT_ID` e `NEXT_PUBLIC_GOOGLE_CLIENT_ID` válidos no ambiente.
 - Pessoas, projetos, conversa, resumo e visão do líder no frontend vêm de dados fictícios em `frontend/data/mock-data.ts`.
-- O frontend ainda não chama a API. A URL de API no exemplo de ambiente está reservada para uma conexão posterior.
-- Não há IA, busca semântica ou MCP. A conversa não é salva. O banco relacional salvará apenas registros criados pelos endpoints quando estiver disponível.
+- O frontend chama a API para autenticação; as demais telas ainda usam dados fictícios.
+- Não há geração de embedding, busca semântica ou MCP. A coluna opcional `problemEmbedding vector(1536)` apenas prepara o armazenamento futuro. A conversa não é salva.
 
 ## Banco e validação desta execução
 
@@ -63,7 +63,7 @@ O computador estava com Node 25.0.0, enquanto o projeto declara Node 24 LTS. O a
 
 Nesta sessão não havia `backend/.env`, serviço PostgreSQL na porta 5432 ou daemon Docker ativo. Para validar schema, gerar cliente e compilar, foi usada uma `DATABASE_URL` fictícia apenas no processo do comando. `prisma:generate`, `prisma:validate` e `build` passaram; quatro testes de serviço passaram. `prisma:status` terminou com erro de schema engine por falta de conexão. Portanto, **a migration v2 não foi aplicada e o seed não foi executado**. `GET /health` e endpoints com banco não foram testados por HTTP.
 
-A migration cria uma organização `Nexo Legacy` para equipes antigas. Se houver `KnowledgeEntry` antiga, ela interrompe a aplicação para que cada entrada seja associada manualmente ao projeto certo. Consulte [modelo-dados-v2.md](modelo-dados-v2.md) antes de aplicar a migration em um banco existente.
+A migration histórica v2 interrompe a aplicação se encontrar registros sem projeto na tabela então chamada `KnowledgeEntry`. A migration atual renomeia essa tabela para `TechnicalProblem` sem apagar registros. Consulte [modelo-dados-v2.md](modelo-dados-v2.md) antes de aplicar migrations em um banco existente.
 
 ## Próximos passos
 

@@ -1,11 +1,11 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { KnowledgeEntryRecord, KnowledgeRepository } from './knowledge.repository';
-import { KnowledgeEntry } from './models';
+import { TechnicalProblemRecord, TechnicalProblemRepository } from './technical-problem.repository';
+import { TechnicalProblem } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
 
 @Injectable()
-export class KnowledgeService {
-  constructor(private readonly knowledgeRepo: KnowledgeRepository) {}
+export class TechnicalProblemService {
+  constructor(private readonly technicalProblemRepo: TechnicalProblemRepository) {}
 
   async list(query?: string, projectId?: string): Promise<any[]> {
     if (query !== undefined && (typeof query !== 'string' || query.length > 200)) {
@@ -14,18 +14,18 @@ export class KnowledgeService {
     if (projectId !== undefined && (typeof projectId !== 'string' || projectId.length > 100)) {
       throw new BadRequestException('Projeto inválido.');
     }
-    return this.knowledgeRepo.list(query, projectId);
+    return this.technicalProblemRepo.list(query, projectId);
   }
 
   async getById(id: string): Promise<any> {
-    const entry = await this.knowledgeRepo.findById(id);
-    if (!entry || !entry.sharingAuthorizedAt) {
-      throw new NotFoundException('Conhecimento compartilhado não encontrado.');
+    const technicalProblem = await this.technicalProblemRepo.findById(id);
+    if (!technicalProblem || !technicalProblem.sharingAuthorizedAt) {
+      throw new NotFoundException('Problema técnico compartilhado não encontrado.');
     }
-    return entry;
+    return technicalProblem;
   }
 
-  async create(value: unknown, currentUserId?: string): Promise<KnowledgeEntryRecord> {
+  async create(value: unknown, currentUserId?: string): Promise<TechnicalProblemRecord> {
     const body = fields(value);
     const projectId = requiredText(body, 'projectId', 100);
     const authorId = optionalText(body, 'authorId', 100) || currentUserId;
@@ -39,31 +39,31 @@ export class KnowledgeService {
     const sourceCheckInId = optionalText(body, 'sourceCheckInId', 100);
     const sourceHelpRequestId = optionalText(body, 'sourceHelpRequestId', 100);
 
-    KnowledgeEntry.validateSources(sourceCheckInId, sourceHelpRequestId);
+    TechnicalProblem.validateSources(sourceCheckInId, sourceHelpRequestId);
 
-    const projectExists = await this.knowledgeRepo.projectExists(projectId);
+    const projectExists = await this.technicalProblemRepo.projectExists(projectId);
     if (!projectExists) throw new NotFoundException('Projeto não encontrado.');
 
-    const isMember = await this.knowledgeRepo.isProjectMember(projectId, authorId);
+    const isMember = await this.technicalProblemRepo.isProjectMember(projectId, authorId);
     if (!isMember) {
       throw new ForbiddenException('O autor informado não participa deste projeto.');
     }
 
     if (sourceCheckInId) {
-      const source = await this.knowledgeRepo.findSourceCheckIn(sourceCheckInId);
+      const source = await this.technicalProblemRepo.findSourceCheckIn(sourceCheckInId);
       if (!source || source.projectId !== projectId) {
         throw new BadRequestException('O check-in de origem deve pertencer ao mesmo projeto.');
       }
     }
 
     if (sourceHelpRequestId) {
-      const sourceHelp = await this.knowledgeRepo.findSourceHelpRequest(sourceHelpRequestId);
+      const sourceHelp = await this.technicalProblemRepo.findSourceHelpRequest(sourceHelpRequestId);
       if (!sourceHelp || sourceHelp.projectId !== projectId) {
         throw new BadRequestException('O pedido de ajuda de origem deve pertencer ao mesmo projeto.');
       }
     }
 
-    return this.knowledgeRepo.create({
+    return this.technicalProblemRepo.create({
       projectId,
       authorId,
       title,
@@ -75,21 +75,21 @@ export class KnowledgeService {
     });
   }
 
-  async authorize(id: string, value: unknown, currentUserId?: string): Promise<KnowledgeEntryRecord> {
+  async authorize(id: string, value: unknown, currentUserId?: string): Promise<TechnicalProblemRecord> {
     const body = fields(value);
     const authorId = optionalText(body, 'authorId', 100) || currentUserId;
     if (!authorId) {
       throw new BadRequestException('Identificador de autor ausente para autorização.');
     }
 
-    const entry = await this.knowledgeRepo.findById(id);
-    if (!entry) throw new NotFoundException('Conhecimento não encontrado.');
+    const technicalProblem = await this.technicalProblemRepo.findById(id);
+    if (!technicalProblem) throw new NotFoundException('Problema técnico não encontrado.');
 
-    const needsUpdate = KnowledgeEntry.validateAuthorization(entry, authorId);
+    const needsUpdate = TechnicalProblem.validateAuthorization(technicalProblem, authorId);
     if (!needsUpdate) {
-      return entry;
+      return technicalProblem;
     }
 
-    return this.knowledgeRepo.authorize(id, authorId, new Date());
+    return this.technicalProblemRepo.authorize(id, authorId, new Date());
   }
 }

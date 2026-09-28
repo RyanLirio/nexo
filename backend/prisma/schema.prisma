@@ -54,8 +54,8 @@ model User {
   conversations        Conversation[]
   messages             Message[]
   checkIns             CheckIn[]
-  knowledge            KnowledgeEntry[]     @relation("KnowledgeAuthor")
-  authorizedKnowledge  KnowledgeEntry[]     @relation("KnowledgeAuthorizer")
+  technicalProblems           TechnicalProblem[] @relation("TechnicalProblemAuthor")
+  authorizedTechnicalProblems TechnicalProblem[] @relation("TechnicalProblemAuthorizer")
   requests             HelpRequest[]        @relation("Requester")
   assignedHelp         HelpRequest[]        @relation("Helper")
   statusChanges        ProjectStatusHistory[]
@@ -100,7 +100,7 @@ model Project {
   members           ProjectMember[]
   conversations     ConversationProject[]
   checkIns          CheckIn[]
-  knowledge         KnowledgeEntry[]
+  technicalProblems TechnicalProblem[]
   helpRequests      HelpRequest[]
   statusHistory     ProjectStatusHistory[]
 
@@ -170,7 +170,7 @@ model CheckIn {
   user             User             @relation(fields: [userId], references: [id])
   project          Project          @relation(fields: [projectId], references: [id])
   messages         CheckInMessage[]
-  knowledgeEntries KnowledgeEntry[]
+  technicalProblems TechnicalProblem[]
 
   @@index([projectId, createdAt])
   @@index([userId, createdAt])
@@ -201,7 +201,7 @@ model ProjectStatusHistory {
   @@index([projectId, createdAt])
 }
 
-model KnowledgeEntry {
+model TechnicalProblem {
   id                  String       @id @default(uuid())
   projectId           String
   sourceCheckInId     String?
@@ -210,6 +210,7 @@ model KnowledgeEntry {
   sharingAuthorizedBy String?
   title               String
   problem             String
+  problemEmbedding    Unsupported("vector(1536)")?
   technology          String?
   solution            String?
   sharingAuthorizedAt DateTime?
@@ -218,8 +219,8 @@ model KnowledgeEntry {
   project             Project      @relation(fields: [projectId], references: [id])
   sourceCheckIn       CheckIn?     @relation(fields: [sourceCheckInId], references: [id])
   sourceHelpRequest   HelpRequest? @relation(fields: [sourceHelpRequestId], references: [id])
-  author              User         @relation("KnowledgeAuthor", fields: [authorId], references: [id])
-  authorizer          User?        @relation("KnowledgeAuthorizer", fields: [sharingAuthorizedBy], references: [id])
+  author              User         @relation("TechnicalProblemAuthor", fields: [authorId], references: [id])
+  authorizer          User?        @relation("TechnicalProblemAuthorizer", fields: [sharingAuthorizedBy], references: [id])
 
   @@index([projectId])
   @@index([sourceCheckInId])
@@ -242,7 +243,7 @@ model HelpRequest {
   requester        User             @relation("Requester", fields: [requesterId], references: [id])
   helper           User?            @relation("Helper", fields: [helperId], references: [id])
   project          Project          @relation(fields: [projectId], references: [id])
-  knowledgeEntries KnowledgeEntry[]
+  technicalProblems TechnicalProblem[]
 
   @@index([projectId, status])
   @@index([requesterId, status])

@@ -8,7 +8,7 @@ Em equipes remotas, poucos líderes podem acompanhar muitas pessoas que particip
 
 O Nexo propõe usar conversas sobre o dia de trabalho para organizar atualizações, registrar soluções técnicas autorizadas e conectar colegas que precisam de ajuda. A proposta é apoiar a colaboração, sem monitorar atividades ou avaliar produtividade individual.
 
-O fluxo planejado para o MVP é: check-in conversacional → registro estruturado → identificação de dificuldade → busca de conhecimento → sugestão de solução ou colega → solicitação de ajuda.
+O fluxo planejado para o MVP é: check-in conversacional → registro estruturado → identificação de dificuldade → consulta de problemas técnicos → sugestão de solução ou colega → solicitação de ajuda.
 
 ## Integrantes
 
@@ -20,7 +20,7 @@ O fluxo planejado para o MVP é: check-in conversacional → registro estruturad
 
 - **Next.js 16 + React 19 + TypeScript:** frontend, responsável pelas páginas que as pessoas acessam.
 - **NestJS 11 + TypeScript:** backend, responsável pela API e, futuramente, pelas regras de negócio e permissões.
-- **PostgreSQL 17:** banco relacional.
+- **PostgreSQL 17 + pgvector:** banco relacional e armazenamento opcional de vetores sem geração automática nesta etapa.
 - **Prisma 7:** descreve o modelo do banco, gera um cliente TypeScript e gerencia migrations. O adaptador `@prisma/adapter-pg` usa o driver `pg` para conectar ao PostgreSQL.
 - **Git e GitHub:** histórico do projeto, hospedagem do repositório e acompanhamento das issues.
 
@@ -49,7 +49,7 @@ nexo/
 │       ├── prisma.service.ts
 │       ├── projects/
 │       ├── check-ins/
-│       ├── knowledge/
+│       ├── technical-problems/
 │       └── help-requests/
 ├── frontend/
 │   ├── .env.example
@@ -75,7 +75,7 @@ nexo/
 
 - Node.js **24 LTS, versão 24.15 ou superior dentro da linha 24**, com npm.
 - Git.
-- Docker Desktop com containers Linux, ou PostgreSQL 17 instalado localmente.
+- Docker Desktop com containers Linux, ou PostgreSQL 17 com pgvector instalado localmente.
 
 Os comandos abaixo partem da pasta `nexo` e usam PowerShell. No Windows, se a política de execução bloquear `npm.ps1`, use `npm.cmd` no lugar de `npm`.
 
@@ -120,7 +120,7 @@ O volume mantém os dados entre execuções. As variáveis de criação de usuá
 
 ### Alternativa sem Docker
 
-Instale o PostgreSQL 17 com as ferramentas de linha de comando e mantenha o serviço ativo. Entre no `psql` com um usuário administrador e crie um usuário e banco locais:
+Instale o PostgreSQL 17, a extensão pgvector e as ferramentas de linha de comando, mantendo o serviço ativo. A migration executa `CREATE EXTENSION IF NOT EXISTS vector`, portanto o arquivo da extensão deve estar disponível no servidor e o usuário da migration precisa poder habilitá-la. Entre no `psql` com um usuário administrador e crie um usuário e banco locais:
 
 ```sql
 CREATE USER nexo WITH PASSWORD 'nexo_local';
@@ -204,7 +204,7 @@ Pare o servidor de desenvolvimento antes de executar `npm start`, pois ambos usa
 
 O modelo v2 adiciona `Organization` e `OrganizationMember`, liga equipes à organização e relaciona soluções técnicas ao projeto e, opcionalmente, ao check-in de origem. Veja [o modelo explicado](docs/modelo-dados-v2.md) e [o estado atual](docs/estado-atual.md). A migration v2 deve ser revisada e aplicada em um banco de desenvolvimento antes do seed.
 
-A API oferece rotas iniciais para projetos, check-ins, conhecimento e pedidos de ajuda; seus contratos estão em [docs/estado-atual.md](docs/estado-atual.md). Ela **não tem autenticação**: IDs enviados pelo cliente não provam identidade e não devem ser tratados como permissão de produção.
+A API oferece rotas iniciais para projetos, check-ins, problemas técnicos e pedidos de ajuda; seus contratos estão em [docs/estado-atual.md](docs/estado-atual.md).
 
 O frontend usa a API no login e continua usando dados fictícios nas demais telas. Não há IA nem MCP implementados. As decisões de interface estão documentadas em [pesquisa de UX](docs/ux-research.md) e [auditoria](docs/ux-audit.md).
 

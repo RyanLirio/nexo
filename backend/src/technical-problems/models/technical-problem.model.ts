@@ -1,17 +1,18 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 
 /**
- * Domain Model: KnowledgeEntry
+ * Domain Model: TechnicalProblem
  *
- * Representa uma entrada de conhecimento extraída de check-ins
- * ou pedidos de ajuda, sujeita a autorização de compartilhamento.
+ * Representa um problema técnico identificado em check-ins
+ * ou pedidos de ajuda, sujeito a autorização de compartilhamento.
  */
-export class KnowledgeEntry {
+export class TechnicalProblem {
   readonly id: string;
   readonly projectId: string;
   readonly authorId: string;
   readonly title: string;
   readonly problem: string;
+  readonly problemEmbedding: number[] | null;
   readonly technology: string | null;
   readonly solution: string | null;
   readonly sharingAuthorizedBy: string | null;
@@ -27,6 +28,7 @@ export class KnowledgeEntry {
     authorId: string;
     title: string;
     problem: string;
+    problemEmbedding?: number[] | null;
     technology?: string | null;
     solution?: string | null;
     sharingAuthorizedBy?: string | null;
@@ -41,6 +43,7 @@ export class KnowledgeEntry {
     this.authorId = props.authorId;
     this.title = props.title;
     this.problem = props.problem;
+    this.problemEmbedding = props.problemEmbedding ?? null;
     this.technology = props.technology ?? null;
     this.solution = props.solution ?? null;
     this.sharingAuthorizedBy = props.sharingAuthorizedBy ?? null;
@@ -62,12 +65,12 @@ export class KnowledgeEntry {
   }
 
   /**
-   * Valida a regra de origem única da entrada de conhecimento.
+   * Valida a regra de origem única do problema técnico.
    * Não é permitido ter sourceCheckInId e sourceHelpRequestId simultâneos.
    */
   static validateSources(sourceCheckInId?: string | null, sourceHelpRequestId?: string | null): void {
     if (sourceCheckInId && sourceHelpRequestId) {
-      throw new BadRequestException('Uma entrada de conhecimento não pode ter duas origens simultâneas.');
+      throw new BadRequestException('Um problema técnico não pode ter duas origens simultâneas.');
     }
   }
 

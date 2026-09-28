@@ -192,8 +192,8 @@ async function seed() {
       },
     });
 
-    // 9. KnowledgeEntry: Autorizada e Não-Autorizada (Rascunho)
-    await db.knowledgeEntry.upsert({
+    // 9. TechnicalProblem: autorizado e não autorizado (rascunho)
+    await db.technicalProblem.upsert({
       where: { id: 'demo-know-ssl' },
       update: {
         title: 'Renovação forçada de certificado SSL homologação',
@@ -215,7 +215,7 @@ async function seed() {
       },
     });
 
-    await db.knowledgeEntry.upsert({
+    await db.technicalProblem.upsert({
       where: { id: 'demo-know-draft' },
       update: {
         title: 'Rascunho de tratamento de timeout na API',

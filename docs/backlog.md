@@ -32,7 +32,7 @@ Critérios de aceitação:
 - Registros sem autorização não aparecem em buscas ou sugestões para colegas.
 - Backend verifica autoria e regras de acesso, sem depender apenas da interface.
 
-## 4. Desenvolver busca de conhecimento e indicação de colaboradores
+## 4. Desenvolver busca de problemas técnicos e indicação de colaboradores
 
 Começar com busca textual por problema ou tecnologia. Avaliar busca semântica somente depois que o fluxo básico estiver funcionando.
 

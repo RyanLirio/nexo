@@ -1,21 +1,41 @@
 export const modelComparisonCases = [
-  'A integração com a API do Protheus está retornando HTTP 401 porque o token OAuth expira antes da requisição.',
+  'Não estou conseguindo autenticar no Protheus.',
 
-  'Não estou conseguindo fazer o robô clicar no botão de confirmar no Protheus.',
+  'A autenticação do Protheus começou a falhar depois que alterei o OAuth.',
 
-  'O Automation Anywhere não encontra o elemento porque ele está dentro de um iframe.',
+  'O robô parou de encontrar o campo de código e ainda não sei por quê.',
 
-  'Depois da atualização, o endpoint de clientes começou a retornar erro 500.',
+  'O robô parou de encontrar o campo porque a tela agora carrega dentro de um iframe.',
 
-  'Consegui terminar a tela de login hoje e amanhã vou começar o dashboard.',
+  'Estou com problema na integração com o banco.',
 
-  'Estou travado na integração com o banco e ainda não descobri o motivo.',
+  'A integração com o PostgreSQL está recusando conexão na porta 5433.',
 
-  'A conexão com o PostgreSQL falha porque a variável DATABASE_URL está apontando para a porta errada.',
+  'O endpoint não está funcionando.',
 
-  'Hoje trabalhei normalmente no projeto e não tive nenhum bloqueio.',
+  'O endpoint retorna 500 desde o deploy, mas ainda não descobri a causa.',
 
-  'O login funciona localmente, mas em produção o callback do Google OAuth está redirecionando para localhost.',
+  'Depois que atualizei a dependência o build começou a falhar.',
 
-  'O build do frontend está quebrando com Cannot find module depois que atualizamos uma dependência.',
+  'Estou travado no build e não sei o que está causando.',
+
+  'Não consigo fazer o login funcionar em produção.',
+
+  'Em produção o callback do Google OAuth continua apontando para localhost.',
+
+  'A automação não está conseguindo preencher o formulário.',
+
+  'O Automation Anywhere não consegue preencher o formulário porque o seletor mudou.',
+
+  'Estou tendo dificuldade com a API.',
+
+  'A API está retornando 429 porque ultrapassamos o limite de requisições.',
+
+  'Hoje mexi bastante na integração, mas ainda não terminei.',
+
+  'Hoje mexi bastante na integração e fiquei travado na autenticação.',
+
+  'O serviço caiu depois da atualização.',
+
+  'O serviço caiu depois da atualização porque a variável de ambiente não foi configurada.',
 ];

@@ -12,6 +12,15 @@ const TechnicalMessageAnalysis = z.object({
   normalizedProblem: z.string().nullable(),
 });
 
+const ProjectContextExtraction = z.object({
+  projects: z.array(
+    z.object({
+      projectId: z.string(),
+      summary: z.string(),
+    }),
+  ),
+});
+
 @Injectable()
 export class OpenAIService {
   private readonly client: OpenAI;
@@ -67,6 +76,62 @@ Para DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
 
     if (!response.output_parsed) {
       throw new Error('A IA não retornou uma análise estruturada.');
+    }
+
+    return {
+      ...response.output_parsed,
+      responseModel: response.model,
+      usage: response.usage,
+    };
+  }
+
+  async extractProjectContexts(
+    message: string,
+    projects: Array<{
+      id: string;
+      name: string;
+      description?: string | null;
+    }>,
+  ) {
+    const projectList = projects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      description: project.description ?? null,
+    }));
+
+    const response = await this.client.responses.parse({
+      model: 'gpt-5.4-mini',
+      instructions: `
+      Você recebe uma mensagem de trabalho de um usuário e a lista de projetos ativos dos quais ele participa.
+
+      Seu objetivo é separar somente as informações da mensagem que pertencem a cada projeto.
+
+      Regras:
+      - Use somente projectId existentes na lista fornecida.
+      - Não invente projetos.
+      - Não associe a mensagem a um projeto apenas por suposição fraca.
+      - Se um projeto não foi mencionado ou não há contexto suficiente para associá-lo, não o inclua.
+      - Uma mensagem pode pertencer a mais de um projeto.
+      - O summary deve conter somente o contexto referente àquele projeto.
+      - Não misture informações de projetos diferentes no mesmo summary.
+      - Não invente informações ausentes na mensagem.
+      - Se nenhum projeto puder ser identificado, retorne projects vazio.
+      - Escreva todos os summaries exclusivamente em português do Brasil.
+          `,
+      input: JSON.stringify({
+        message,
+        activeProjects: projectList,
+      }),
+      text: {
+        format: zodTextFormat(
+          ProjectContextExtraction,
+          'project_context_extraction',
+        ),
+      },
+    });
+
+    if (!response.output_parsed) {
+      throw new Error('A IA não conseguiu separar o contexto por projeto.');
     }
 
     return response.output_parsed;

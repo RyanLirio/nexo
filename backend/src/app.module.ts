@@ -15,12 +15,15 @@ import { AuthGuard } from './common/auth/auth.guard';
 import { RolesGuard } from './common/auth/roles.guard';
 import { AccessControlService, PrismaAccessControlService } from './common/auth/access-control.service';
 
+import { ConversationsModule } from './conversations/conversations.module';
+
 @Module({
   imports: [
     AuthModule,
     UsersModule,
     TeamsModule,
     ProjectsModule,
+    ConversationsModule,
     CheckInsModule,
     TechnicalProblemModule,
     HelpRequestsModule,

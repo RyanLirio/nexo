@@ -5,8 +5,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 import { AuthSession, clearAuthSession, readAuthSession } from '../lib/auth-session';
 
+type Theme = 'dark' | 'light';
+
+const THEME_KEY = 'nexo.theme';
+
 function isProtectedPath(pathname: string): boolean {
-  return pathname === '/colaborador' || pathname === '/lider' || pathname.startsWith('/projetos/');
+  return pathname === '/colaborador' || pathname.startsWith('/colaborador/') || pathname === '/lider' || pathname.startsWith('/projetos/');
 }
 
 function initials(name: string): string {
@@ -24,7 +28,15 @@ export default function AppChrome({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [session, setSession] = useState<AuthSession | null>(null);
   const [ready, setReady] = useState(false);
+  const [theme, setTheme] = useState<Theme>('dark');
   const protectedPath = isProtectedPath(pathname);
+
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem(THEME_KEY);
+    const initialTheme: Theme = savedTheme === 'light' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = initialTheme;
+    setTheme(initialTheme);
+  }, []);
 
   useEffect(() => {
     const currentSession = readAuthSession();
@@ -51,6 +63,13 @@ export default function AppChrome({ children }: { children: ReactNode }) {
     router.push('/login');
   }
 
+  function toggleTheme() {
+    const nextTheme: Theme = theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = nextTheme;
+    window.localStorage.setItem(THEME_KEY, nextTheme);
+    setTheme(nextTheme);
+  }
+
   return (
     <div className="app-layout">
       <header className="topbar">
@@ -60,8 +79,18 @@ export default function AppChrome({ children }: { children: ReactNode }) {
         </Link>
         <nav className="topnav" aria-label="Navegação principal">
           <Link href="/colaborador">Meus projetos</Link>
+          <Link href="/colaborador/conversa">Conversa com o Nexo</Link>
           {(session?.user.role === 'ADMIN' || session?.user.role === 'LEADER') && <Link href="/lider">Visão da equipe</Link>}
         </nav>
+        <button
+          className="theme-toggle"
+          type="button"
+          onClick={toggleTheme}
+          aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+          title={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+        >
+          <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
+        </button>
         {session ? (
           <button className="profile-link profile-button" type="button" onClick={logout} aria-label={`Sair da conta de ${session.user.name}`}>
             <span className="profile-avatar">{initials(session.user.name)}</span>

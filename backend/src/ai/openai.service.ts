@@ -91,12 +91,14 @@ Para DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
       id: string;
       name: string;
       description?: string | null;
+      currentSummary?: string | null;
     }>,
   ) {
     const projectList = projects.map((project) => ({
       id: project.id,
       name: project.name,
       description: project.description ?? null,
+      currentSummary: project.currentSummary ?? null,
     }));
 
     const response = await this.client.responses.parse({
@@ -117,6 +119,13 @@ Para DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
       - Não invente informações ausentes na mensagem.
       - Se nenhum projeto puder ser identificado, retorne projects vazio.
       - Escreva todos os summaries exclusivamente em português do Brasil.
+      - Cada projeto pode possuir currentSummary, que representa o contexto já consolidado desse projeto no dia atual.
+      - Use currentSummary somente quando a mensagem atual também estiver relacionada àquele projeto.
+      - Se houver currentSummary, produza um novo summary consolidando o contexto anterior com as novas informações da mensagem.
+      - Preserve informações anteriores ainda relevantes.
+      - Não repita informações desnecessariamente.
+      - Não inclua um projeto apenas porque ele possui currentSummary; ele só deve aparecer se a mensagem atual falar sobre ele.
+      - Se currentSummary for null, produza o summary somente com base na mensagem atual.
           `,
       input: JSON.stringify({
         message,

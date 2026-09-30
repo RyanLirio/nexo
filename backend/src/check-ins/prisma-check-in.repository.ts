@@ -60,6 +60,83 @@ export class PrismaCheckInRepository extends CheckInRepository {
     }) as unknown as CheckInRecord | null;
   }
 
+  async findDailyByUserAndProject(
+    userId: string,
+    projectId: string,
+    startOfDay: Date,
+    endOfDay: Date,
+  ): Promise<CheckInRecord | null> {
+    return this.prisma.checkIn.findFirst({
+      where: {
+        userId,
+        projectId,
+        createdAt: {
+          gte: startOfDay,
+          lt: endOfDay,
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      include: {
+        user: { select: { id: true, name: true } },
+        messages: {
+          include: {
+            message: {
+              select: {
+                id: true,
+                content: true,
+                role: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+      },
+    }) as unknown as CheckInRecord | null;
+  }
+
+  async updateSummary(
+    id: string,
+    summary: string,
+    messageId: string,
+  ): Promise<CheckInRecord> {
+    return this.prisma.checkIn.update({
+      where: { id },
+      data: {
+        summary,
+        messages: {
+          connectOrCreate: {
+            where: {
+              checkInId_messageId: {
+                checkInId: id,
+                messageId,
+              },
+            },
+            create: {
+              messageId,
+            },
+          },
+        },
+      },
+      include: {
+        user: { select: { id: true, name: true } },
+        messages: {
+          include: {
+            message: {
+              select: {
+                id: true,
+                content: true,
+                role: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+      },
+    }) as unknown as CheckInRecord;
+  }
+
   async create(data: {
     projectId: string;
     userId: string;

@@ -27,6 +27,20 @@ export abstract class CheckInRepository {
   abstract isProjectMember(projectId: string, userId: string): Promise<boolean>;
   abstract listByProject(projectId: string): Promise<CheckInRecord[]>;
   abstract findById(id: string): Promise<CheckInRecord | null>;
+
+  abstract findDailyByUserAndProject(
+    userId: string,
+    projectId: string,
+    startOfDay: Date,
+    endOfDay: Date,
+  ): Promise<CheckInRecord | null>;
+
+  abstract updateSummary(
+    id: string,
+    summary: string,
+    messageId: string,
+  ): Promise<CheckInRecord>;
+
   abstract create(data: {
     projectId: string;
     userId: string;

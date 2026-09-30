@@ -91,6 +91,8 @@ model Project {
   leaderId          String?
   responsibleUserId String?
   createdBy         String?
+  estimatedCompletionAt DateTime?
+  priority          Int?
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @default(now()) @updatedAt
   team              Team                   @relation(fields: [teamId], references: [id])

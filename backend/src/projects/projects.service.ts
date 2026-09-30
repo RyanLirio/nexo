@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ProjectMemberRecord, ProjectRecord, ProjectRepository } from './project.repository';
 import { Project } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
@@ -17,6 +17,44 @@ export class ProjectsService {
     return this.projectRepo.list(filter);
   }
 
+  async update(id: string, value: unknown, currentUserId: string): Promise<ProjectRecord> {
+    const project = await this.getById(id);
+    const body = fields(value);
+
+    const isLeader = project.leaderId === currentUserId;
+    const isProjectMember = isLeader ? true : !!(await this.projectRepo.findMember(id, currentUserId));
+    const isTeamMember = (isLeader || isProjectMember) ? true : !!(await this.projectRepo.findTeamMember(project.teamId, currentUserId));
+
+    if (!isLeader && !isProjectMember && !isTeamMember) {
+      throw new ForbiddenException('Você não tem permissão para alterar este projeto.');
+    }
+
+    const updateData: {
+      name?: string;
+      description?: string | null;
+      estimatedCompletionAt?: Date | null;
+      priority?: number | null;
+    } = {};
+
+    if (body['name'] !== undefined) {
+      updateData.name = requiredText(body, 'name', 160);
+    }
+
+    if (body['description'] !== undefined) {
+      updateData.description = optionalText(body, 'description');
+    }
+
+    if (body['priority'] !== undefined) {
+      updateData.priority = Project.validatePriority(body['priority']);
+    }
+
+    if (body['estimatedCompletionAt'] !== undefined) {
+      updateData.estimatedCompletionAt = Project.validateEstimatedCompletionAt(body['estimatedCompletionAt']);
+    }
+
+    return this.projectRepo.update(id, updateData);
+  }
+
   async create(value: unknown, createdByUserId?: string): Promise<ProjectRecord> {
     const body = fields(value);
     const teamId = requiredText(body, 'teamId', 100);
@@ -25,6 +63,8 @@ export class ProjectsService {
     const leaderId = optionalText(body, 'leaderId', 100);
     const responsibleUserId = optionalText(body, 'responsibleUserId', 100);
     const createdBy = optionalText(body, 'createdBy', 100) || createdByUserId || null;
+    const priority = Project.validatePriority(body['priority']);
+    const estimatedCompletionAt = Project.validateEstimatedCompletionAt(body['estimatedCompletionAt']);
 
     const team = await this.projectRepo.findTeam(teamId);
     if (!team) throw new NotFoundException('Equipe não encontrada.');
@@ -48,6 +88,8 @@ export class ProjectsService {
       leaderId,
       responsibleUserId,
       createdBy,
+      estimatedCompletionAt,
+      priority,
       members: members.length > 0 ? members : undefined,
     });
   }

@@ -7,6 +7,8 @@ export interface ProjectRecord {
   leaderId?: string | null;
   responsibleUserId?: string | null;
   createdBy?: string | null;
+  estimatedCompletionAt?: Date | null;
+  priority?: number | null;
   createdAt: Date;
   updatedAt: Date;
   members?: ProjectMemberRecord[];
@@ -34,9 +36,19 @@ export abstract class ProjectRepository {
     leaderId?: string | null;
     responsibleUserId?: string | null;
     createdBy?: string | null;
+    estimatedCompletionAt?: Date | null;
+    priority?: number | null;
     members?: { userId: string; role: 'OWNER' | 'MEMBER' }[];
   }): Promise<ProjectRecord>;
-  abstract update(id: string, data: { name?: string; description?: string | null }): Promise<ProjectRecord>;
+  abstract update(
+    id: string,
+    data: {
+      name?: string;
+      description?: string | null;
+      estimatedCompletionAt?: Date | null;
+      priority?: number | null;
+    },
+  ): Promise<ProjectRecord>;
   abstract updateStatus(
     id: string,
     newStatus: string,

@@ -27,6 +27,28 @@ export class ProjectsService {
     return !!teamMember;
   }
 
+  async getLeaderView(id: string, currentUserId: string): Promise<any> {
+    const isMember = await this.isMember(id, currentUserId);
+    if (!isMember) {
+      throw new ForbiddenException('Você não tem permissão para acessar a visão do líder deste projeto.');
+    }
+    const project = await this.getById(id);
+    return {
+      id: project.id,
+      name: project.name,
+      description: project.description,
+      status: project.status,
+      priority: project.priority ?? null,
+      estimatedCompletionAt: project.estimatedCompletionAt ?? null,
+      team: project.team,
+      leader: project.leader,
+      responsibleUser: project.responsibleUser,
+      members: project.members || [],
+      latestCheckIn: project.checkIns?.[0] || null,
+      openTechnicalProblems: project.technicalProblems || [],
+    };
+  }
+
   async update(id: string, value: unknown, currentUserId: string): Promise<ProjectRecord> {
     const project = await this.getById(id);
     const body = fields(value);

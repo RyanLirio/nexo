@@ -18,8 +18,13 @@ export interface TechnicalProblemRecord {
 }
 
 export abstract class TechnicalProblemRepository {
-  abstract list(query?: string, projectId?: string): Promise<any[]>;
+  abstract list(
+    query?: string,
+    projectId?: string,
+    filter?: { status?: string; technology?: string },
+  ): Promise<any[]>;
   abstract findById(id: string): Promise<any | null>;
+
   abstract create(data: {
     projectId: string;
     authorId: string;

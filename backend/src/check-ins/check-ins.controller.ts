@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard, AuthenticatedUser } from '../common/auth/auth.guard';
 import { CurrentUser } from '../common/auth/current-user.decorator';
 import { CheckInsService } from './check-ins.service';
@@ -8,9 +8,15 @@ export class CheckInsController {
   constructor(private readonly checkIns: CheckInsService) {}
 
   @Get('projects/:projectId/check-ins')
-  listByProject(@Param('projectId') projectId: string) {
-    return this.checkIns.list(projectId);
+  listByProject(
+    @Param('projectId') projectId: string,
+    @Query('userId') userId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.checkIns.list(projectId, { userId, startDate, endDate });
   }
+
 
   @Post('projects/:projectId/check-ins')
   @UseGuards(AuthGuard)

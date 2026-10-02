@@ -1004,3 +1004,87 @@ test('AiToolsService.executeTool(search_knowledge_base) delega para technicalPro
   assert.equal(res.length, 1);
 });
 
+// --- Ticket 4: Endpoints e Serviços da Visão do Líder ---
+test('ProjectsService.getLeaderView retorna dados consolidados quando usuário é membro/líder', async () => {
+  const mockRepo = {
+    findById: async (id: string) => ({
+      id,
+      name: 'Projeto Beta',
+      leaderId: 'leader-1',
+      teamId: 't-1',
+      priority: 50,
+      estimatedCompletionAt: null,
+      members: [{ userId: 'leader-1', role: 'OWNER' }],
+      checkIns: [{ id: 'chk-1', summary: 'Status ok' }],
+      technicalProblems: [{ id: 'tp-1', title: 'DB lock' }],
+    }),
+    findMember: async () => null,
+    findTeamMember: async () => null,
+  };
+  const service = new ProjectsService(mockRepo as any);
+  const view = await service.getLeaderView('p-beta', 'leader-1');
+  assert.equal(view.id, 'p-beta');
+  assert.equal(view.priority, 50);
+  assert.equal(view.latestCheckIn.id, 'chk-1');
+  assert.equal(view.openTechnicalProblems[0].id, 'tp-1');
+});
+
+test('ProjectsService.getLeaderView rejeita usuário não membro com ForbiddenException', async () => {
+  const mockRepo = {
+    findById: async (id: string) => ({
+      id,
+      name: 'Projeto Beta',
+      leaderId: 'leader-1',
+      teamId: 't-1',
+    }),
+    findMember: async () => null,
+    findTeamMember: async () => null,
+  };
+  const service = new ProjectsService(mockRepo as any);
+  await assert.rejects(
+    service.getLeaderView('p-beta', 'user-outsider'),
+    ForbiddenException,
+  );
+});
+
+test('CheckInsService.list repassa filtros de userId e datas ao repositório', async () => {
+  let capturedFilter: unknown;
+  const mockRepo = {
+    projectExists: async () => true,
+    listByProject: async (projectId: string, filter?: unknown) => {
+      capturedFilter = filter;
+      return [];
+    },
+  };
+  const service = new CheckInsService(mockRepo as any);
+  const startDate = new Date('2026-01-01');
+  const endDate = new Date('2026-01-31');
+  await service.list('p-1', { userId: 'u-1', startDate, endDate });
+  assert.deepEqual(capturedFilter, { userId: 'u-1', startDate, endDate });
+});
+
+test('TechnicalProblemService.updateSolution atualiza solução para membro autorizado', async () => {
+  let updatedSolution: string | undefined;
+  const mockRepo = {
+    findById: async (id: string) => ({ id, projectId: 'p-1', authorId: 'u-1' }),
+    isProjectMember: async () => true,
+    updateSolution: async (id: string, solution: string) => {
+      updatedSolution = solution;
+      return { id, solution } as any;
+    },
+  };
+  const service = new TechnicalProblemService(mockRepo as any);
+  const res = await service.updateSolution('tp-1', 'Corrigido com retry', 'u-1');
+  assert.equal(updatedSolution, 'Corrigido com retry');
+  assert.equal(res.solution, 'Corrigido com retry');
+});
+
+test('TechnicalProblemService.updateSolution rejeita solução vazia com BadRequestException', async () => {
+  const service = new TechnicalProblemService({} as any);
+  await assert.rejects(
+    service.updateSolution('tp-1', '   ', 'u-1'),
+    BadRequestException,
+  );
+});
+
+

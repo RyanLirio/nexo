@@ -7,15 +7,23 @@ import { fields, optionalText, requiredText } from '../request-fields';
 export class TechnicalProblemService {
   constructor(private readonly technicalProblemRepo: TechnicalProblemRepository) {}
 
-  async list(query?: string, projectId?: string): Promise<any[]> {
+  async list(
+    query?: string,
+    projectId?: string,
+    filter?: { status?: string; technology?: string; onlyAuthorized?: boolean },
+  ): Promise<any[]> {
     if (query !== undefined && (typeof query !== 'string' || query.length > 200)) {
       throw new BadRequestException('A busca deve ter até 200 caracteres.');
     }
     if (projectId !== undefined && (typeof projectId !== 'string' || projectId.length > 100)) {
       throw new BadRequestException('Projeto inválido.');
     }
-    return this.technicalProblemRepo.list(query, projectId);
+    if (filter?.status && filter.status !== 'OPEN' && filter.status !== 'RESOLVED') {
+      throw new BadRequestException('Status inválido. Use OPEN ou RESOLVED.');
+    }
+    return this.technicalProblemRepo.list(query, projectId, filter);
   }
+
 
   async getById(id: string): Promise<any> {
     const technicalProblem = await this.technicalProblemRepo.findById(id);

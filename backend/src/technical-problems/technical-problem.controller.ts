@@ -20,8 +20,23 @@ export class TechnicalProblemController {
   list(
     @Query('query') query?: string,
     @Query('projectId') projectId?: string,
+    @Query('status') status?: string,
+    @Query('technology') technology?: string,
   ) {
-    return this.technicalProblems.list(query, projectId);
+    return this.technicalProblems.list(query, projectId, { status, technology });
+  }
+
+  @Get('/api/v1/projects/:projectId/technical-problems')
+  listByProject(
+    @Param('projectId') projectId: string,
+    @Query('status') status?: string,
+    @Query('technology') technology?: string,
+  ) {
+    return this.technicalProblems.list(undefined, projectId, {
+      status,
+      technology,
+      onlyAuthorized: false,
+    });
   }
 
   @Get(':id')
@@ -47,5 +62,18 @@ export class TechnicalProblemController {
   ) {
     return this.technicalProblems.authorize(id, body, user?.id);
   }
+
+  @Patch(':id/solution')
+  @UseGuards(AuthGuard)
+  updateSolution(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const fields = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+    const solution = typeof fields.solution === 'string' ? fields.solution : '';
+    return this.technicalProblems.updateSolution(id, solution, user.id);
+  }
 }
+
 

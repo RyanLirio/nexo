@@ -8,20 +8,40 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
     super();
   }
 
-  async list(query?: string, projectId?: string): Promise<any[]> {
+  async list(
+    query?: string,
+    projectId?: string,
+    filter?: { status?: string; technology?: string; onlyAuthorized?: boolean },
+  ): Promise<any[]> {
     const term = query?.trim();
+    const where: Record<string, unknown> = {};
+
+    if (filter?.onlyAuthorized !== false) {
+      where.sharingAuthorizedAt = { not: null };
+    }
+
+    if (projectId) {
+      where.projectId = projectId;
+    }
+
+    if (filter?.status === 'OPEN') {
+      where.solution = null;
+    } else if (filter?.status === 'RESOLVED') {
+      where.solution = { not: null };
+    }
+
+    if (filter?.technology) {
+      where.technology = { contains: filter.technology, mode: 'insensitive' as const };
+    }
+
+    if (term) {
+      where.OR = ['title', 'problem', 'technology', 'solution'].map(field => ({
+        [field]: { contains: term, mode: 'insensitive' as const },
+      }));
+    }
+
     return this.prisma.technicalProblem.findMany({
-      where: {
-        sharingAuthorizedAt: { not: null },
-        ...(projectId ? { projectId } : {}),
-        ...(term
-          ? {
-              OR: ['title', 'problem', 'technology', 'solution'].map(field => ({
-                [field]: { contains: term, mode: 'insensitive' as const },
-              })),
-            }
-          : {}),
-      },
+      where,
       select: {
         id: true,
         projectId: true,
@@ -29,6 +49,7 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
         problem: true,
         technology: true,
         solution: true,
+        sharingAuthorizedAt: true,
         createdAt: true,
         author: { select: { id: true, name: true } },
       },
@@ -36,6 +57,7 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
       take: 50,
     });
   }
+
 
   async findById(id: string): Promise<any | null> {
     return this.prisma.technicalProblem.findUnique({

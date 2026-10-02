@@ -7,11 +7,24 @@ import { fields, optionalText } from '../request-fields';
 export class CheckInsService {
   constructor(private readonly checkInRepo: CheckInRepository) {}
 
-  async list(projectId: string): Promise<CheckInRecord[]> {
+  async list(
+    projectId: string,
+    filter?: { userId?: string; startDate?: string | Date; endDate?: string | Date },
+  ): Promise<CheckInRecord[]> {
     const exists = await this.checkInRepo.projectExists(projectId);
     if (!exists) throw new NotFoundException('Projeto não encontrado.');
-    return this.checkInRepo.listByProject(projectId);
+
+    const parsedFilter = filter
+      ? {
+          userId: filter.userId,
+          startDate: filter.startDate ? new Date(filter.startDate) : undefined,
+          endDate: filter.endDate ? new Date(filter.endDate) : undefined,
+        }
+      : undefined;
+
+    return this.checkInRepo.listByProject(projectId, parsedFilter);
   }
+
 
   async getById(id: string): Promise<CheckInRecord> {
     const checkIn = await this.checkInRepo.findById(id);

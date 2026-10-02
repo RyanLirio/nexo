@@ -26,9 +26,20 @@ export class PrismaCheckInRepository extends CheckInRepository {
     return !!membership;
   }
 
-  async listByProject(projectId: string): Promise<CheckInRecord[]> {
+  async listByProject(
+    projectId: string,
+    filter?: { userId?: string; startDate?: Date; endDate?: Date },
+  ): Promise<CheckInRecord[]> {
+    const where: Record<string, unknown> = { projectId };
+    if (filter?.userId) where.userId = filter.userId;
+    if (filter?.startDate || filter?.endDate) {
+      where.createdAt = {
+        ...(filter.startDate ? { gte: filter.startDate } : {}),
+        ...(filter.endDate ? { lte: filter.endDate } : {}),
+      };
+    }
     return this.prisma.checkIn.findMany({
-      where: { projectId },
+      where,
       include: {
         user: { select: { id: true, name: true } },
         messages: {
@@ -43,6 +54,7 @@ export class PrismaCheckInRepository extends CheckInRepository {
       take: 50,
     }) as unknown as CheckInRecord[];
   }
+
 
   async findById(id: string): Promise<CheckInRecord | null> {
     return this.prisma.checkIn.findUnique({

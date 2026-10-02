@@ -813,3 +813,83 @@ test('AiToolsService.executeTool rejeita acesso a projeto de não-membro com For
   );
 });
 
+test('AiToolsService.executeTool(get_user_projects) retorna lista de projetos ativos do usuário', async () => {
+  let capturedFilter: unknown;
+  const mockProjectsService = {
+    list: async (filter: unknown) => {
+      capturedFilter = filter;
+      return [{ id: 'p1', name: 'Nexo' }];
+    },
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+
+  const result = await service.executeTool('get_user_projects', {}, 'user-1');
+  assert.deepEqual(capturedFilter, { userId: 'user-1', status: 'ACTIVE' });
+  assert.deepEqual(result, [{ id: 'p1', name: 'Nexo' }]);
+});
+
+test('AiToolsService.executeTool(get_project_context) agrega metadados, prioridade, estimativa e membros', async () => {
+  const mockProjectsService = {
+    isMember: async () => true,
+    getById: async (id: string) => ({
+      id,
+      name: 'Nexo AI',
+      description: 'Gestão Inteligente',
+      status: 'ACTIVE',
+      priority: 85,
+      estimatedCompletionAt: new Date('2026-12-31'),
+      team: { id: 'team-1', name: 'Alpha' },
+      leader: { id: 'user-1', name: 'Gustavo' },
+      responsibleUser: { id: 'user-2', name: 'Ryan' },
+      members: [
+        { userId: 'user-1', role: 'OWNER', user: { name: 'Gustavo', email: 'g@example.com' } },
+        { userId: 'user-2', role: 'MEMBER', user: { name: 'Ryan', email: 'r@example.com' } },
+      ],
+      checkIns: [{ id: 'chk-1', summary: 'Daily ok' }],
+      technicalProblems: [{ id: 'tp-1', title: 'OAuth expira', technology: 'Auth' }],
+    }),
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+
+  const context: any = await service.executeTool('get_project_context', { projectId: 'p1' }, 'user-1');
+  assert.equal(context.id, 'p1');
+  assert.equal(context.name, 'Nexo AI');
+  assert.equal(context.priority, 85);
+  assert.equal(context.members.length, 2);
+  assert.equal(context.latestCheckIn.id, 'chk-1');
+  assert.equal(context.openTechnicalProblems[0].id, 'tp-1');
+});
+
+test('AiToolsService.executeTool(get_recent_messages) consulta mensagens via conversationRepo', async () => {
+  let capturedUserId: string | undefined;
+  let capturedLimit: number | undefined;
+  const mockConversationRepo = {
+    findRecentMessages: async (userId: string, limit?: number) => {
+      capturedUserId = userId;
+      capturedLimit = limit;
+      return [{ id: 'msg-1', content: 'Olá', role: 'USER' }];
+    },
+  };
+  const service = new AiToolsService(
+    {} as any,
+    {} as any,
+    {} as any,
+    mockConversationRepo as any,
+  );
+
+  const res: any = await service.executeTool('get_recent_messages', { limit: 5 }, 'user-42');
+  assert.equal(capturedUserId, 'user-42');
+  assert.equal(capturedLimit, 5);
+  assert.equal(res.messages.length, 1);
+});
+

@@ -35,4 +35,9 @@ export abstract class ConversationRepository {
     conversationId: string,
     projectId: string,
   ): Promise<void>;
-}
+
+  abstract findRecentMessages(
+    userId: string,
+    limit?: number,
+  ): Promise<MessageRecord[]>;
+}

@@ -45,16 +45,38 @@ export class AiToolsService {
       case 'get_user_projects':
         return this.projectsService.list({ userId, status: 'ACTIVE' });
 
-      case 'get_project_context':
+      case 'get_project_context': {
         if (!projectId) {
           throw new BadRequestException('Identificador de projeto ausente.');
         }
-        return this.projectsService.getById(projectId);
+        const project = await this.projectsService.getById(projectId);
+        return {
+          id: project.id,
+          name: project.name,
+          description: project.description,
+          status: project.status,
+          priority: project.priority ?? null,
+          estimatedCompletionAt: project.estimatedCompletionAt ?? null,
+          team: project.team,
+          leader: project.leader,
+          responsibleUser: project.responsibleUser,
+          members: (project.members || []).map((m: any) => ({
+            userId: m.userId,
+            role: m.role,
+            name: m.user?.name,
+            email: m.user?.email,
+          })),
+          latestCheckIn: project.checkIns?.[0] || null,
+          openTechnicalProblems: project.technicalProblems || [],
+        };
+      }
 
       case 'get_recent_messages': {
-        const limit = typeof args.limit === 'number' ? args.limit : 10;
-        return { limit, messages: [] };
+        const limit = typeof args.limit === 'number' && args.limit > 0 ? args.limit : 10;
+        const messages = await this.conversationRepo.findRecentMessages(userId, limit);
+        return { messages };
       }
+
 
       case 'search_knowledge_base': {
         const query = typeof args.query === 'string' ? args.query : '';

@@ -13,10 +13,14 @@ export class PrismaProjectRepository extends ProjectRepository {
       where: { id },
       include: {
         team: { select: { id: true, name: true } },
-        leader: { select: { id: true, name: true } },
-        responsibleUser: { select: { id: true, name: true } },
-        members: { include: { user: { select: { id: true, name: true } } } },
+        leader: { select: { id: true, name: true, email: true } },
+        responsibleUser: { select: { id: true, name: true, email: true } },
+        members: { include: { user: { select: { id: true, name: true, email: true } } } },
         checkIns: { orderBy: { createdAt: 'desc' }, take: 1 },
+        technicalProblems: {
+          where: { solution: null },
+          select: { id: true, title: true, problem: true, technology: true, createdAt: true },
+        },
       },
     });
   }

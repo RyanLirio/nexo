@@ -13,6 +13,8 @@ import { Project, ProjectMember, ProjectStatus, ProjectRole, VALID_PROJECT_STATU
 import { CheckIn } from './check-ins/models';
 import { TechnicalProblem } from './technical-problems/models';
 import { HelpRequest, HelpStatus, HELP_STATUS_TRANSITIONS } from './help-requests/models';
+import { AiToolsService } from './ai/tools/ai-tools.service';
+import { AI_TOOL_DEFINITIONS } from './ai/tools/ai-tools.definitions';
 
 
 test('cria check-in quando a pessoa participa do projeto', async () => {
@@ -753,5 +755,61 @@ test('HelpRequest.validateTransition valida transições de ciclo de vida', () =
   assert.doesNotThrow(() => HelpRequest.validateTransition(HelpStatus.OPEN, HelpStatus.OPEN));
   assert.throws(() => HelpRequest.validateTransition(HelpStatus.RESOLVED, HelpStatus.OPEN), BadRequestException);
   assert.throws(() => HelpRequest.validateTransition(HelpStatus.RESOLVED, HelpStatus.IN_PROGRESS), BadRequestException);
+});
+
+// --- AiToolsService & Dispatcher ---
+test('AiToolsService exporta o catálogo de definições com 6 tools', () => {
+  assert.equal(AI_TOOL_DEFINITIONS.length, 6);
+  const toolNames = AI_TOOL_DEFINITIONS.map((t) => t.function.name);
+  assert.deepEqual(toolNames.sort(), [
+    'get_project_context',
+    'get_recent_messages',
+    'get_user_projects',
+    'manage_technical_problem',
+    'save_checkin',
+    'search_knowledge_base',
+  ].sort());
+});
+
+test('AiToolsService.executeTool rejeita ferramenta desconhecida com BadRequestException', async () => {
+  const service = new AiToolsService(
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+  await assert.rejects(
+    service.executeTool('unknown_tool', {}, 'user-1'),
+    BadRequestException,
+  );
+});
+
+test('AiToolsService.executeTool rejeita execução sem userId com BadRequestException', async () => {
+  const service = new AiToolsService(
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+  await assert.rejects(
+    service.executeTool('get_user_projects', {}, ''),
+    BadRequestException,
+  );
+});
+
+test('AiToolsService.executeTool rejeita acesso a projeto de não-membro com ForbiddenException', async () => {
+  const mockProjectsService = {
+    isMember: async () => false,
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+  await assert.rejects(
+    service.executeTool('get_project_context', { projectId: 'proj-secret' }, 'user-stranger'),
+    ForbiddenException,
+  );
 });
 

@@ -17,6 +17,16 @@ export class ProjectsService {
     return this.projectRepo.list(filter);
   }
 
+  async isMember(projectId: string, userId: string): Promise<boolean> {
+    const project = await this.projectRepo.findById(projectId);
+    if (!project) return false;
+    if (project.leaderId === userId) return true;
+    const member = await this.projectRepo.findMember(projectId, userId);
+    if (member) return true;
+    const teamMember = await this.projectRepo.findTeamMember(project.teamId, userId);
+    return !!teamMember;
+  }
+
   async update(id: string, value: unknown, currentUserId: string): Promise<ProjectRecord> {
     const project = await this.getById(id);
     const body = fields(value);

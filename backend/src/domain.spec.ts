@@ -893,3 +893,114 @@ test('AiToolsService.executeTool(get_recent_messages) consulta mensagens via con
   assert.equal(res.messages.length, 1);
 });
 
+test('AiToolsService.executeTool(save_checkin) chama checkInsService.saveCheckIn', async () => {
+  let savedArgs: unknown;
+  const mockProjectsService = {
+    isMember: async () => true,
+  };
+  const mockCheckInsService = {
+    saveCheckIn: async (projectId: string, args: unknown, userId: string) => {
+      savedArgs = { projectId, args, userId };
+      return { id: 'checkin-1', projectId, userId, summary: 'Progresso diário' };
+    },
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    mockCheckInsService as any,
+    {} as any,
+    {} as any,
+  );
+
+  const res: any = await service.executeTool('save_checkin', { projectId: 'p1', summary: 'Feito feature A' }, 'user-1');
+  assert.equal(res.id, 'checkin-1');
+  assert.deepEqual(savedArgs, {
+    projectId: 'p1',
+    args: { projectId: 'p1', summary: 'Feito feature A' },
+    userId: 'user-1',
+  });
+});
+
+test('AiToolsService.executeTool(manage_technical_problem, create) chama technicalProblemService.create', async () => {
+  let createdData: unknown;
+  const mockProjectsService = {
+    isMember: async () => true,
+  };
+  const mockTechService = {
+    create: async (args: unknown, userId: string) => {
+      createdData = { args, userId };
+      return { id: 'tp-new', title: 'Bug SSL' };
+    },
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    {} as any,
+    mockTechService as any,
+    {} as any,
+  );
+
+  const res: any = await service.executeTool(
+    'manage_technical_problem',
+    { action: 'create', projectId: 'p1', title: 'Bug SSL', problem: 'SSL expirado' },
+    'user-1',
+  );
+  assert.equal(res.id, 'tp-new');
+  assert.equal((createdData as any).userId, 'user-1');
+});
+
+test('AiToolsService.executeTool(manage_technical_problem, resolve) chama technicalProblemService.updateSolution', async () => {
+  let resolvedData: unknown;
+  const mockProjectsService = {
+    isMember: async () => true,
+  };
+  const mockTechService = {
+    updateSolution: async (problemId: string, solution: string, userId: string) => {
+      resolvedData = { problemId, solution, userId };
+      return { id: problemId, solution };
+    },
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    {} as any,
+    mockTechService as any,
+    {} as any,
+  );
+
+  const res: any = await service.executeTool(
+    'manage_technical_problem',
+    { action: 'resolve', projectId: 'p1', problemId: 'tp-10', solution: 'Atualizar certbot' },
+    'user-1',
+  );
+  assert.equal(res.id, 'tp-10');
+  assert.deepEqual(resolvedData, {
+    problemId: 'tp-10',
+    solution: 'Atualizar certbot',
+    userId: 'user-1',
+  });
+});
+
+test('AiToolsService.executeTool(search_knowledge_base) delega para technicalProblemService.list', async () => {
+  let queryCaptured: string | undefined;
+  let projectCaptured: string | undefined;
+  const mockProjectsService = {
+    isMember: async () => true,
+  };
+  const mockTechService = {
+    list: async (query?: string, projectId?: string) => {
+      queryCaptured = query;
+      projectCaptured = projectId;
+      return [{ id: 'tp-1', solution: 'Reiniciar gateway' }];
+    },
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    {} as any,
+    mockTechService as any,
+    {} as any,
+  );
+
+  const res: any = await service.executeTool('search_knowledge_base', { query: 'gateway', projectId: 'p1' }, 'user-1');
+  assert.equal(queryCaptured, 'gateway');
+  assert.equal(projectCaptured, 'p1');
+  assert.equal(res.length, 1);
+});
+

@@ -87,7 +87,7 @@ export class AiToolsService {
         if (!projectId) {
           throw new BadRequestException('Identificador de projeto ausente.');
         }
-        return this.checkInsService.create(projectId, args, userId);
+        return this.checkInsService.saveCheckIn(projectId, args, userId);
       }
 
       case 'manage_technical_problem': {
@@ -102,10 +102,12 @@ export class AiToolsService {
           if (!problemId) {
             throw new BadRequestException('Identificador de problema técnico obrigatório para resolução.');
           }
-          return { problemId, solution: args.solution };
+          const solution = typeof args.solution === 'string' ? args.solution : '';
+          return this.technicalProblemService.updateSolution(problemId, solution, userId);
         }
         throw new BadRequestException(`Ação inválida: ${action}`);
       }
+
 
       default:
         throw new BadRequestException(`Ferramenta não suportada: ${name}`);

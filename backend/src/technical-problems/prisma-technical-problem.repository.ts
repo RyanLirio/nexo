@@ -112,4 +112,12 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
       select: { projectId: true },
     });
   }
+
+  async updateSolution(id: string, solution: string): Promise<TechnicalProblemRecord> {
+    return this.prisma.technicalProblem.update({
+      where: { id },
+      data: { solution },
+    }) as unknown as TechnicalProblemRecord;
+  }
 }
+

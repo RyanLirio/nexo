@@ -165,4 +165,34 @@ export class PrismaCheckInRepository extends CheckInRepository {
       },
     }) as unknown as CheckInRecord;
   }
+
+  async updateCheckIn(
+    id: string,
+    data: {
+      summary?: string;
+      difficulties?: string | null;
+      nextSteps?: string | null;
+      messageIds?: string[];
+    },
+  ): Promise<CheckInRecord> {
+    return this.prisma.checkIn.update({
+      where: { id },
+      data: {
+        ...(data.summary !== undefined ? { summary: data.summary } : {}),
+        ...(data.difficulties !== undefined ? { difficulties: data.difficulties } : {}),
+        ...(data.nextSteps !== undefined ? { nextSteps: data.nextSteps } : {}),
+        ...(data.messageIds && data.messageIds.length > 0
+          ? {
+              messages: {
+                create: data.messageIds.map(messageId => ({ messageId })),
+              },
+            }
+          : {}),
+      },
+      include: {
+        user: { select: { id: true, name: true } },
+      },
+    }) as unknown as CheckInRecord;
+  }
 }
+

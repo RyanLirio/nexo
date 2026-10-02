@@ -92,4 +92,22 @@ export class TechnicalProblemService {
 
     return this.technicalProblemRepo.authorize(id, authorId, new Date());
   }
+
+  async updateSolution(id: string, solution: string, currentUserId?: string): Promise<TechnicalProblemRecord> {
+    if (!solution || typeof solution !== 'string' || solution.trim() === '') {
+      throw new BadRequestException('A solução deve ser informada.');
+    }
+    const technicalProblem = await this.technicalProblemRepo.findById(id);
+    if (!technicalProblem) throw new NotFoundException('Problema técnico não encontrado.');
+
+    if (currentUserId) {
+      const isMember = await this.technicalProblemRepo.isProjectMember(technicalProblem.projectId, currentUserId);
+      if (!isMember && technicalProblem.authorId !== currentUserId) {
+        throw new ForbiddenException('Você não tem permissão para registrar solução neste problema.');
+      }
+    }
+
+    return this.technicalProblemRepo.updateSolution(id, solution.trim());
+  }
 }
+

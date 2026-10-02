@@ -49,4 +49,15 @@ export abstract class CheckInRepository {
     nextSteps?: string | null;
     messageIds?: string[];
   }): Promise<CheckInRecord>;
+
+  abstract updateCheckIn(
+    id: string,
+    data: {
+      summary?: string;
+      difficulties?: string | null;
+      nextSteps?: string | null;
+      messageIds?: string[];
+    },
+  ): Promise<CheckInRecord>;
 }
+

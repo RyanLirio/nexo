@@ -35,4 +35,6 @@ export abstract class TechnicalProblemRepository {
   abstract isProjectMember(projectId: string, userId: string): Promise<boolean>;
   abstract findSourceCheckIn(id: string): Promise<{ projectId: string } | null>;
   abstract findSourceHelpRequest(id: string): Promise<{ projectId: string } | null>;
+  abstract updateSolution(id: string, solution: string): Promise<TechnicalProblemRecord>;
 }
+

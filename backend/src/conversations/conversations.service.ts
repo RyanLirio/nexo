@@ -63,6 +63,8 @@ export class ConversationsService {
           name: project.name,
           description: project.description,
           currentSummary: checkIn?.summary ?? null,
+          currentDifficulties: checkIn?.difficulties ?? null,
+          currentNextSteps: checkIn?.nextSteps ?? null,
         };
       }),
     );
@@ -80,7 +82,7 @@ export class ConversationsService {
       validProjectIds.has(project.projectId),
     );
 
-    await Promise.all(
+    const persistedProjects = await Promise.all(
       projects.map(async (project) => {
         await this.conversationRepo.linkProject(
           conversation.id,
@@ -96,28 +98,39 @@ export class ConversationsService {
           );
 
         if (existingCheckIn) {
-          await this.checkInRepo.updateSummary(
-            existingCheckIn.id,
-            project.summary,
-            savedMessage.id,
-          );
+          const context = {
+            summary: project.summary,
+            difficulties:
+              project.difficulties ?? existingCheckIn.difficulties ?? null,
+            nextSteps:
+              project.nextSteps ?? existingCheckIn.nextSteps ?? null,
+          };
 
-          return;
+          await this.checkInRepo.updateContext(existingCheckIn.id, {
+            ...context,
+            messageId: savedMessage.id,
+          });
+
+          return { ...project, ...context };
         }
 
         await this.checkInRepo.create({
           projectId: project.projectId,
           userId,
           summary: project.summary,
+          difficulties: project.difficulties,
+          nextSteps: project.nextSteps,
           messageIds: [savedMessage.id],
         });
+
+        return project;
       }),
     );
 
     return {
       conversationId: conversation.id,
       messageId: savedMessage.id,
-      projects,
+      projects: persistedProjects,
     };
   }
 }

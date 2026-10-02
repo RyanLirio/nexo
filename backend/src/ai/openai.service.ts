@@ -3,12 +3,26 @@ import OpenAI from 'openai';
 import { z } from 'zod/v4';
 import { zodTextFormat } from 'openai/helpers/zod';
 
+const TechnicalClassification = z.enum([
+  'TECHNICAL_PROBLEM',
+  'DIFFICULTY',
+  'NO_PROBLEM',
+]);
+
+const technicalClassificationInstructions = `
+NO_PROBLEM:
+Não existe dificuldade ou problema técnico relatado.
+
+DIFFICULTY:
+O usuário relata dificuldade, bloqueio ou impedimento, mas o problema técnico concreto ainda não está identificado.
+Não invente causa técnica.
+
+TECHNICAL_PROBLEM:
+Existe sintoma técnico concreto, comportamento técnico identificável ou causa técnica conhecida.
+`;
+
 const TechnicalMessageAnalysis = z.object({
-  classification: z.enum([
-    'TECHNICAL_PROBLEM',
-    'DIFFICULTY',
-    'NO_PROBLEM',
-  ]),
+  classification: TechnicalClassification,
   normalizedProblem: z.string().nullable(),
 });
 
@@ -17,6 +31,9 @@ const ProjectContextExtraction = z.object({
     z.object({
       projectId: z.string(),
       summary: z.string(),
+      difficulties: z.string().nullable(),
+      nextSteps: z.string().nullable(),
+      classification: TechnicalClassification,
     }),
   ),
 });
@@ -46,14 +63,7 @@ export class OpenAIService {
       instructions: `
 Classifique a mensagem de trabalho em uma destas categorias:
 
-TECHNICAL_PROBLEM:
-Existe um problema técnico concreto ou uma causa técnica identificada.
-
-DIFFICULTY:
-A pessoa está travada ou com dificuldade, mas a causa técnica ainda não foi identificada.
-
-NO_PROBLEM:
-Não existe dificuldade nem problema técnico na mensagem.
+${technicalClassificationInstructions}
 
 Quando for TECHNICAL_PROBLEM, normalizedProblem deve ser uma frase técnica natural contendo:
 - sintoma ou problema;
@@ -92,6 +102,8 @@ Para DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
       name: string;
       description?: string | null;
       currentSummary?: string | null;
+      currentDifficulties?: string | null;
+      currentNextSteps?: string | null;
     }>,
   ) {
     const projectList = projects.map((project) => ({
@@ -99,6 +111,8 @@ Para DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
       name: project.name,
       description: project.description ?? null,
       currentSummary: project.currentSummary ?? null,
+      currentDifficulties: project.currentDifficulties ?? null,
+      currentNextSteps: project.currentNextSteps ?? null,
     }));
 
     const response = await this.client.responses.parse({
@@ -114,18 +128,27 @@ Para DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
       - Não associe a mensagem a um projeto apenas por suposição fraca.
       - Se um projeto não foi mencionado ou não há contexto suficiente para associá-lo, não o inclua.
       - Uma mensagem pode pertencer a mais de um projeto.
-      - O summary deve conter somente o contexto referente àquele projeto.
+      - summary representa o avanço ou contexto principal do trabalho naquele projeto.
+      - difficulties representa somente uma dificuldade relatada pelo usuário naquele projeto. Use null quando a mensagem não trouxer dificuldade.
+      - nextSteps representa somente um próximo passo explicitamente informado ou claramente declarado pelo usuário. Use null quando a mensagem não trouxer próximo passo.
+      - Não invente dificuldades nem próximos passos.
+      - classification deve classificar individualmente o contexto da mensagem atual referente àquele projeto usando exatamente estas definições:
+      ${technicalClassificationInstructions}
+      - Para classification, considere somente as informações da mensagem atual que pertencem ao projeto avaliado.
+      - Não use informações de outro projeto nem o contexto anterior para determinar classification.
+      - Cada campo deve conter somente o contexto referente àquele projeto.
       - Não misture informações de projetos diferentes no mesmo summary.
       - Não invente informações ausentes na mensagem.
       - Se nenhum projeto puder ser identificado, retorne projects vazio.
-      - Escreva todos os summaries exclusivamente em português do Brasil.
-      - Cada projeto pode possuir currentSummary, que representa o contexto já consolidado desse projeto no dia atual.
-      - Use currentSummary somente quando a mensagem atual também estiver relacionada àquele projeto.
-      - Se houver currentSummary, produza um novo summary consolidando o contexto anterior com as novas informações da mensagem.
+      - Escreva summary, difficulties e nextSteps exclusivamente em português do Brasil.
+      - Cada projeto pode possuir currentSummary, currentDifficulties e currentNextSteps, que representam o contexto já registrado no dia atual.
+      - Use o contexto anterior somente quando a mensagem atual também estiver relacionada àquele projeto.
+      - Se houver currentSummary, produza um novo summary consolidando o contexto anterior com as novas informações da mensagem, como já ocorre no fluxo atual.
       - Preserve informações anteriores ainda relevantes.
       - Não repita informações desnecessariamente.
-      - Não inclua um projeto apenas porque ele possui currentSummary; ele só deve aparecer se a mensagem atual falar sobre ele.
+      - Não inclua um projeto apenas porque ele possui contexto anterior; ele só deve aparecer se a mensagem atual falar sobre ele.
       - Se currentSummary for null, produza o summary somente com base na mensagem atual.
+      - Se a mensagem atual não mencionar nova dificuldade ou novo próximo passo, retorne null no respectivo campo. O sistema preservará o valor anterior já registrado.
           `,
       input: JSON.stringify({
         message,

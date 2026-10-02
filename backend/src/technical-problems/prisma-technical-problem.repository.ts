@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { TechnicalProblemRecord, TechnicalProblemRepository } from './technical-problem.repository';
+import {
+  SimilarTechnicalProblem,
+  TechnicalProblemRecord,
+  TechnicalProblemRepository,
+} from './technical-problem.repository';
+
+const EMBEDDING_DIMENSIONS = 1536;
+const DEFAULT_SIMILARITY_LIMIT = 5;
+const DEFAULT_SIMILARITY_THRESHOLD = 0.78;
 
 @Injectable()
 export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository {
@@ -140,6 +148,63 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
       where: { id },
       data: { solution },
     }) as unknown as TechnicalProblemRecord;
+  }
+
+  async searchSimilar(
+    userId: string,
+    embedding: number[],
+    limit = DEFAULT_SIMILARITY_LIMIT,
+    threshold = DEFAULT_SIMILARITY_THRESHOLD,
+  ): Promise<SimilarTechnicalProblem[]> {
+    if (
+      embedding.length !== EMBEDDING_DIMENSIONS
+      || embedding.some((value) => !Number.isFinite(value))
+    ) {
+      throw new Error(
+        `O embedding deve possuir ${EMBEDDING_DIMENSIONS} valores numéricos.`,
+      );
+    }
+
+    const vector = `[${embedding.join(',')}]`;
+
+    return this.prisma.$queryRaw<SimilarTechnicalProblem[]>`
+      WITH query_embedding AS (
+        SELECT ${vector}::vector AS value
+      ), viewer AS (
+        SELECT id, role
+        FROM "User"
+        WHERE id = ${userId}
+      )
+      SELECT
+        problem.id,
+        problem."projectId",
+        problem.problem,
+        problem.solution,
+        problem.technology,
+        json_build_object('id', author.id, 'name', author.name) AS author,
+        1 - (problem."problemEmbedding" <=> query_embedding.value) AS similarity
+      FROM "TechnicalProblem" AS problem
+      CROSS JOIN query_embedding
+      CROSS JOIN viewer
+      INNER JOIN "User" AS author ON author.id = problem."authorId"
+      INNER JOIN "Project" AS project ON project.id = problem."projectId"
+      WHERE problem."problemEmbedding" IS NOT NULL
+        AND problem."sharingAuthorizedAt" IS NOT NULL
+        AND problem.solution IS NOT NULL
+        AND BTRIM(problem.solution) <> ''
+        AND (
+          viewer.role = 'ADMIN'
+          OR EXISTS (
+            SELECT 1
+            FROM "TeamMember" AS membership
+            WHERE membership."teamId" = project."teamId"
+              AND membership."userId" = viewer.id
+          )
+        )
+        AND 1 - (problem."problemEmbedding" <=> query_embedding.value) >= ${threshold}
+      ORDER BY similarity DESC
+      LIMIT ${limit}
+    `;
   }
 }
 

@@ -17,6 +17,16 @@ export interface TechnicalProblemRecord {
   project?: { id: string; name: string };
 }
 
+export interface SimilarTechnicalProblem {
+  id: string;
+  projectId: string;
+  problem: string;
+  solution: string;
+  technology: string | null;
+  author: { id: string; name: string };
+  similarity: number;
+}
+
 export abstract class TechnicalProblemRepository {
   abstract list(
     query?: string,
@@ -41,5 +51,11 @@ export abstract class TechnicalProblemRepository {
   abstract findSourceCheckIn(id: string): Promise<{ projectId: string } | null>;
   abstract findSourceHelpRequest(id: string): Promise<{ projectId: string } | null>;
   abstract updateSolution(id: string, solution: string): Promise<TechnicalProblemRecord>;
+  abstract searchSimilar(
+    userId: string,
+    embedding: number[],
+    limit?: number,
+    threshold?: number,
+  ): Promise<SimilarTechnicalProblem[]>;
 }
 

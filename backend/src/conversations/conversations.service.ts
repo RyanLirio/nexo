@@ -1,17 +1,60 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ProjectRepository } from '../projects/project.repository';
 import { OpenAIService } from '../ai/openai.service';
 import { ConversationRepository } from './conversation.repository';
 import { CheckInRepository } from '../check-ins/check-in.repository';
+import {
+  SimilarTechnicalProblem,
+  TechnicalProblemRepository,
+} from '../technical-problems/technical-problem.repository';
+
+const SIMILARITY_LIMIT = 5;
+const SIMILARITY_THRESHOLD = 0.78;
 
 @Injectable()
 export class ConversationsService {
+  private readonly logger = new Logger(ConversationsService.name);
+
   constructor(
     private readonly projectRepo: ProjectRepository,
     private readonly openAIService: OpenAIService,
     private readonly conversationRepo: ConversationRepository,
     private readonly checkInRepo: CheckInRepository,
+    private readonly technicalProblemRepo: TechnicalProblemRepository,
   ) {}
+
+  private async searchSimilarProblems(userId: string, project: {
+    projectId: string;
+    classification: 'NO_PROBLEM' | 'DIFFICULTY' | 'TECHNICAL_PROBLEM';
+    normalizedProblem: string | null;
+  }): Promise<SimilarTechnicalProblem[]> {
+    if (project.classification !== 'TECHNICAL_PROBLEM') {
+      return [];
+    }
+
+    const normalizedProblem = project.normalizedProblem?.trim();
+    if (!normalizedProblem) {
+      throw new Error('Problema técnico identificado sem normalização.');
+    }
+
+    const embedding = await this.openAIService.generateEmbedding(
+      normalizedProblem,
+    );
+    const similarProblems = await this.technicalProblemRepo.searchSimilar(
+      userId,
+      embedding,
+      SIMILARITY_LIMIT,
+      SIMILARITY_THRESHOLD,
+    );
+
+    for (const candidate of similarProblems) {
+      this.logger.log(
+        `semantic-search projectId=${project.projectId} candidateId=${candidate.id} similarity=${candidate.similarity.toFixed(4)}`,
+      );
+    }
+
+    return similarProblems;
+  }
 
   async separateMessageByProject(
     userId: string,
@@ -97,33 +140,34 @@ export class ConversationsService {
             endOfDay,
           );
 
-        if (existingCheckIn) {
-          const context = {
-            summary: project.summary,
-            difficulties:
-              project.difficulties ?? existingCheckIn.difficulties ?? null,
-            nextSteps:
-              project.nextSteps ?? existingCheckIn.nextSteps ?? null,
-          };
+        const context = {
+          summary: project.summary,
+          difficulties:
+            project.difficulties ?? existingCheckIn?.difficulties ?? null,
+          nextSteps:
+            project.nextSteps ?? existingCheckIn?.nextSteps ?? null,
+        };
 
+        if (existingCheckIn) {
           await this.checkInRepo.updateContext(existingCheckIn.id, {
             ...context,
             messageId: savedMessage.id,
           });
-
-          return { ...project, ...context };
+        } else {
+          await this.checkInRepo.create({
+            projectId: project.projectId,
+            userId,
+            ...context,
+            messageIds: [savedMessage.id],
+          });
         }
 
-        await this.checkInRepo.create({
-          projectId: project.projectId,
+        const similarProblems = await this.searchSimilarProblems(
           userId,
-          summary: project.summary,
-          difficulties: project.difficulties,
-          nextSteps: project.nextSteps,
-          messageIds: [savedMessage.id],
-        });
+          project,
+        );
 
-        return project;
+        return { ...project, ...context, similarProblems };
       }),
     );
 

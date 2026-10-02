@@ -34,6 +34,7 @@ const ProjectContextExtraction = z.object({
       difficulties: z.string().nullable(),
       nextSteps: z.string().nullable(),
       classification: TechnicalClassification,
+      normalizedProblem: z.string().nullable(),
     }),
   ),
 });
@@ -136,6 +137,9 @@ Para DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
       ${technicalClassificationInstructions}
       - Para classification, considere somente as informações da mensagem atual que pertencem ao projeto avaliado.
       - Não use informações de outro projeto nem o contexto anterior para determinar classification.
+      - Quando classification for TECHNICAL_PROBLEM, normalizedProblem deve ser uma frase técnica natural formada por sintoma ou problema, causa somente se conhecida, tecnologia e contexto relevante.
+      - Nunca invente causa ou detalhes em normalizedProblem.
+      - Quando classification for DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
       - Cada campo deve conter somente o contexto referente àquele projeto.
       - Não misture informações de projetos diferentes no mesmo summary.
       - Não invente informações ausentes na mensagem.
@@ -166,6 +170,25 @@ Para DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
       throw new Error('A IA não conseguiu separar o contexto por projeto.');
     }
 
-    return response.output_parsed;
+    for (const project of response.output_parsed.projects) {
+      if (
+        project.classification === 'TECHNICAL_PROBLEM'
+        && !project.normalizedProblem?.trim()
+      ) {
+        throw new Error(
+          'A IA não normalizou o problema técnico identificado.',
+        );
+      }
+    }
+
+    return {
+      projects: response.output_parsed.projects.map((project) => ({
+        ...project,
+        normalizedProblem:
+          project.classification === 'TECHNICAL_PROBLEM'
+            ? project.normalizedProblem!.trim()
+            : null,
+      })),
+    };
   }
 }

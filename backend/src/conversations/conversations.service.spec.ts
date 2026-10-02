@@ -7,6 +7,10 @@ import {
 } from '../check-ins/check-in.repository';
 import { ProjectRepository } from '../projects/project.repository';
 import {
+  SimilarTechnicalProblem,
+  TechnicalProblemRepository,
+} from '../technical-problems/technical-problem.repository';
+import {
   ConversationRepository,
   MessageRecord,
 } from './conversation.repository';
@@ -24,6 +28,7 @@ interface ExtractedProjectContext {
   difficulties: string | null;
   nextSteps: string | null;
   classification: 'NO_PROBLEM' | 'DIFFICULTY' | 'TECHNICAL_PROBLEM';
+  normalizedProblem: string | null;
 }
 
 interface TestProject {
@@ -59,6 +64,7 @@ function createHarness(options: {
   projects: TestProject[];
   extractions: ExtractedProjectContext[][];
   existingCheckIns?: CheckInRecord[];
+  similarProblems?: SimilarTechnicalProblem[];
 }) {
   const checkIns = new Map(
     (options.existingCheckIns ?? []).map((checkIn) => [
@@ -70,8 +76,16 @@ function createHarness(options: {
   const updatedCheckIns: UpdatedCheckIn[] = [];
   const linkedProjects: string[] = [];
   const projectContextsSentToAi: ProjectContextInput[] = [];
+  const embeddingInputs: string[] = [];
+  const semanticSearches: Array<{
+    userId: string;
+    embedding: number[];
+    limit?: number;
+    threshold?: number;
+  }> = [];
   let extractionIndex = 0;
   let messageIndex = 0;
+  let extractionCalls = 0;
 
   const projectRepo = {
     list: async () => options.projects,
@@ -82,10 +96,15 @@ function createHarness(options: {
       _message: string,
       projects: ProjectContextInput,
     ) => {
+      extractionCalls += 1;
       projectContextsSentToAi.push(projects);
       const extraction = options.extractions[extractionIndex];
       extractionIndex += 1;
       return { projects: extraction };
+    },
+    generateEmbedding: async (text: string) => {
+      embeddingInputs.push(text);
+      return Array.from({ length: 1536 }, () => 0.01);
     },
   } as unknown as OpenAIService;
 
@@ -148,17 +167,33 @@ function createHarness(options: {
     },
   } as unknown as CheckInRepository;
 
+  const technicalProblemRepo = {
+    searchSimilar: async (
+      userId: string,
+      embedding: number[],
+      limit?: number,
+      threshold?: number,
+    ) => {
+      semanticSearches.push({ userId, embedding, limit, threshold });
+      return options.similarProblems ?? [];
+    },
+  } as unknown as TechnicalProblemRepository;
+
   return {
     service: new ConversationsService(
       projectRepo,
       openAIService,
       conversationRepo,
       checkInRepo,
+      technicalProblemRepo,
     ),
     createdCheckIns,
     updatedCheckIns,
     linkedProjects,
     projectContextsSentToAi,
+    embeddingInputs,
+    semanticSearches,
+    extractionCallCount: () => extractionCalls,
   };
 }
 
@@ -171,6 +206,7 @@ test('cria CheckIn com avanço, dificuldade e próximo passo', async () => {
       difficulties: 'O ambiente de homologação está instável.',
       nextSteps: 'Validar os retornos bancários amanhã.',
       classification: 'TECHNICAL_PROBLEM',
+      normalizedProblem: 'O ambiente de homologação está instável durante a integração bancária.',
     }]],
   });
 
@@ -193,7 +229,12 @@ test('cria CheckIn com avanço, dificuldade e próximo passo', async () => {
     difficulties: 'O ambiente de homologação está instável.',
     nextSteps: 'Validar os retornos bancários amanhã.',
     classification: 'TECHNICAL_PROBLEM',
+    normalizedProblem: 'O ambiente de homologação está instável durante a integração bancária.',
+    similarProblems: [],
   });
+  assert.deepEqual(harness.embeddingInputs, [
+    'O ambiente de homologação está instável durante a integração bancária.',
+  ]);
 });
 
 test('cria CheckIn sem dificuldade quando a mensagem não relata uma', async () => {
@@ -205,6 +246,7 @@ test('cria CheckIn sem dificuldade quando a mensagem não relata uma', async () 
       difficulties: null,
       nextSteps: 'Iniciar a tela de cadastro.',
       classification: 'NO_PROBLEM',
+      normalizedProblem: null,
     }]],
   });
 
@@ -219,6 +261,8 @@ test('cria CheckIn sem dificuldade quando a mensagem não relata uma', async () 
     'Iniciar a tela de cadastro.',
   );
   assert.equal(result.projects[0].classification, 'NO_PROBLEM');
+  assert.equal(result.projects[0].normalizedProblem, null);
+  assert.equal(harness.semanticSearches.length, 0);
 });
 
 test('classifica dificuldade sem causa técnica concreta por projeto', async () => {
@@ -230,6 +274,7 @@ test('classifica dificuldade sem causa técnica concreta por projeto', async () 
       difficulties: 'O usuário não está conseguindo autenticar no Protheus.',
       nextSteps: null,
       classification: 'DIFFICULTY',
+      normalizedProblem: null,
     }]],
   });
 
@@ -239,6 +284,8 @@ test('classifica dificuldade sem causa técnica concreta por projeto', async () 
   );
 
   assert.equal(result.projects[0].classification, 'DIFFICULTY');
+  assert.equal(result.projects[0].normalizedProblem, null);
+  assert.equal(harness.semanticSearches.length, 0);
   assert.equal(
     harness.createdCheckIns[0].difficulties,
     'O usuário não está conseguindo autenticar no Protheus.',
@@ -255,6 +302,7 @@ test('segunda mensagem do mesmo projeto atualiza o CheckIn diário e vincula a n
         difficulties: null,
         nextSteps: 'Testar a autenticação.',
         classification: 'NO_PROBLEM',
+        normalizedProblem: null,
       }],
       [{
         projectId: 'project-1',
@@ -262,6 +310,7 @@ test('segunda mensagem do mesmo projeto atualiza o CheckIn diário e vincula a n
         difficulties: 'O token está expirando antes da requisição.',
         nextSteps: null,
         classification: 'TECHNICAL_PROBLEM',
+        normalizedProblem: 'O token expira antes da requisição durante a autenticação.',
       }],
     ],
   });
@@ -291,6 +340,10 @@ test('segunda mensagem do mesmo projeto atualiza o CheckIn diário e vincula a n
     currentNextSteps: 'Testar a autenticação.',
   });
   assert.equal(result.projects[0].classification, 'TECHNICAL_PROBLEM');
+  assert.equal(
+    result.projects[0].normalizedProblem,
+    'O token expira antes da requisição durante a autenticação.',
+  );
 });
 
 test('nova mensagem não apaga dificuldade ou próximo passo anteriores quando não os menciona', async () => {
@@ -306,6 +359,7 @@ test('nova mensagem não apaga dificuldade ou próximo passo anteriores quando n
       difficulties: null,
       nextSteps: null,
       classification: 'NO_PROBLEM',
+      normalizedProblem: null,
     }]],
   });
 
@@ -336,6 +390,15 @@ test('mantém contextos isolados quando uma mensagem menciona dois projetos', as
       { id: 'project-finance', name: 'Financeiro' },
       { id: 'project-portal', name: 'Portal' },
     ],
+    similarProblems: [{
+      id: 'problem-from-another-project',
+      projectId: 'project-legacy',
+      problem: 'A aplicação falha ao enviar requisições no Safari.',
+      solution: 'Atualizar o tratamento do cabeçalho no cliente HTTP.',
+      technology: 'Safari',
+      author: { id: 'user-2', name: 'Gustavo' },
+      similarity: 0.84,
+    }],
     extractions: [[
       {
         projectId: 'project-finance',
@@ -343,6 +406,7 @@ test('mantém contextos isolados quando uma mensagem menciona dois projetos', as
         difficulties: null,
         nextSteps: 'Validar o relatório financeiro.',
         classification: 'NO_PROBLEM',
+        normalizedProblem: null,
       },
       {
         projectId: 'project-portal',
@@ -350,6 +414,7 @@ test('mantém contextos isolados quando uma mensagem menciona dois projetos', as
         difficulties: 'O login falha no navegador Safari.',
         nextSteps: null,
         classification: 'TECHNICAL_PROBLEM',
+        normalizedProblem: 'O login falha no navegador Safari no Portal.',
       },
     ]],
   });
@@ -396,4 +461,17 @@ test('mantém contextos isolados quando uma mensagem menciona dois projetos', as
       { projectId: 'project-portal', classification: 'TECHNICAL_PROBLEM' },
     ],
   );
+  assert.equal(harness.extractionCallCount(), 1);
+  assert.deepEqual(harness.embeddingInputs, [
+    'O login falha no navegador Safari no Portal.',
+  ]);
+  assert.deepEqual(result.projects[0].similarProblems, []);
+  assert.equal(result.projects[1].similarProblems[0].similarity, 0.84);
+  assert.equal(
+    result.projects[1].similarProblems[0].projectId,
+    'project-legacy',
+  );
+  assert.equal(harness.semanticSearches[0].limit, 5);
+  assert.equal(harness.semanticSearches[0].threshold, 0.78);
+  assert.equal(harness.semanticSearches[0].userId, 'user-1');
 });

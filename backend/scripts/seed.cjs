@@ -50,6 +50,8 @@ async function seed() {
         leaderId: 'demo-gustavo',
         responsibleUserId: 'demo-ryan',
         status: 'ACTIVE',
+        priority: 90,
+        estimatedCompletionAt: new Date('2026-11-30T18:00:00.000Z'),
       },
       {
         id: 'demo-proj-portal',
@@ -58,6 +60,8 @@ async function seed() {
         leaderId: 'demo-marina',
         responsibleUserId: 'demo-joao',
         status: 'PLANNING',
+        priority: 50,
+        estimatedCompletionAt: new Date('2026-12-15T18:00:00.000Z'),
       },
     ];
 
@@ -70,6 +74,8 @@ async function seed() {
           leaderId: proj.leaderId,
           responsibleUserId: proj.responsibleUserId,
           status: proj.status,
+          priority: proj.priority,
+          estimatedCompletionAt: proj.estimatedCompletionAt,
         },
         create: {
           id: proj.id,
@@ -79,8 +85,11 @@ async function seed() {
           leaderId: proj.leaderId,
           responsibleUserId: proj.responsibleUserId,
           status: proj.status,
+          priority: proj.priority,
+          estimatedCompletionAt: proj.estimatedCompletionAt,
         },
       });
+
 
       // Membros dos projetos
       await db.projectMember.upsert({
@@ -236,10 +245,54 @@ async function seed() {
         createdAt: demoDate,
       },
     });
+
+    const previousDate = new Date('2026-09-20T12:00:00.000Z');
+    await db.checkIn.upsert({
+      where: { id: 'demo-checkin-financeiro-anterior' },
+      update: {
+        summary: 'Kickoff técnico da integração bancária e análise da API.',
+        difficulties: 'Aguardando documentação do sandbox financeiro.',
+        nextSteps: 'Configurar credenciais e testar autenticação no gateway.',
+      },
+      create: {
+        id: 'demo-checkin-financeiro-anterior',
+        projectId: 'demo-proj-financeiro',
+        userId: 'demo-ryan',
+        summary: 'Kickoff técnico da integração bancária e análise da API.',
+        difficulties: 'Aguardando documentação do sandbox financeiro.',
+        nextSteps: 'Configurar credenciais e testar autenticação no gateway.',
+        createdAt: previousDate,
+      },
+    });
+
+    await db.technicalProblem.upsert({
+      where: { id: 'demo-know-open' },
+      update: {
+        title: 'Vazamento de conexões de pool no PostgreSQL',
+        problem: 'Conexões não estão sendo liberadas após queries com timeout no adapter-pg.',
+        technology: 'PostgreSQL',
+        solution: null,
+        sharingAuthorizedBy: null,
+        sharingAuthorizedAt: null,
+      },
+      create: {
+        id: 'demo-know-open',
+        projectId: 'demo-proj-financeiro',
+        authorId: 'demo-ryan',
+        title: 'Vazamento de conexões de pool no PostgreSQL',
+        problem: 'Conexões não estão sendo liberadas após queries com timeout no adapter-pg.',
+        technology: 'PostgreSQL',
+        solution: null,
+        sharingAuthorizedBy: null,
+        sharingAuthorizedAt: null,
+        createdAt: demoDate,
+      },
+    });
   });
 
-  console.log('Seed completo do Nexo executado com sucesso: 14 entidades populadas.');
+  console.log('Seed completo do Nexo executado com sucesso: entidades populadas e enriquecidas com IA tools.');
 }
+
 
 seed()
   .catch((error) => {

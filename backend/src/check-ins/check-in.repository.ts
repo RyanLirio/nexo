@@ -25,8 +25,12 @@ export interface CheckInRecord {
 export abstract class CheckInRepository {
   abstract projectExists(projectId: string): Promise<boolean>;
   abstract isProjectMember(projectId: string, userId: string): Promise<boolean>;
-  abstract listByProject(projectId: string): Promise<CheckInRecord[]>;
+  abstract listByProject(
+    projectId: string,
+    filter?: { userId?: string; startDate?: Date; endDate?: Date },
+  ): Promise<CheckInRecord[]>;
   abstract findById(id: string): Promise<CheckInRecord | null>;
+
 
   abstract findDailyByUserAndProject(
     userId: string,
@@ -49,4 +53,15 @@ export abstract class CheckInRepository {
     nextSteps?: string | null;
     messageIds?: string[];
   }): Promise<CheckInRecord>;
+
+  abstract updateCheckIn(
+    id: string,
+    data: {
+      summary?: string;
+      difficulties?: string | null;
+      nextSteps?: string | null;
+      messageIds?: string[];
+    },
+  ): Promise<CheckInRecord>;
 }
+

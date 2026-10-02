@@ -26,9 +26,20 @@ export class PrismaCheckInRepository extends CheckInRepository {
     return !!membership;
   }
 
-  async listByProject(projectId: string): Promise<CheckInRecord[]> {
+  async listByProject(
+    projectId: string,
+    filter?: { userId?: string; startDate?: Date; endDate?: Date },
+  ): Promise<CheckInRecord[]> {
+    const where: Record<string, unknown> = { projectId };
+    if (filter?.userId) where.userId = filter.userId;
+    if (filter?.startDate || filter?.endDate) {
+      where.createdAt = {
+        ...(filter.startDate ? { gte: filter.startDate } : {}),
+        ...(filter.endDate ? { lte: filter.endDate } : {}),
+      };
+    }
     return this.prisma.checkIn.findMany({
-      where: { projectId },
+      where,
       include: {
         user: { select: { id: true, name: true } },
         messages: {
@@ -43,6 +54,7 @@ export class PrismaCheckInRepository extends CheckInRepository {
       take: 50,
     }) as unknown as CheckInRecord[];
   }
+
 
   async findById(id: string): Promise<CheckInRecord | null> {
     return this.prisma.checkIn.findUnique({
@@ -165,4 +177,34 @@ export class PrismaCheckInRepository extends CheckInRepository {
       },
     }) as unknown as CheckInRecord;
   }
+
+  async updateCheckIn(
+    id: string,
+    data: {
+      summary?: string;
+      difficulties?: string | null;
+      nextSteps?: string | null;
+      messageIds?: string[];
+    },
+  ): Promise<CheckInRecord> {
+    return this.prisma.checkIn.update({
+      where: { id },
+      data: {
+        ...(data.summary !== undefined ? { summary: data.summary } : {}),
+        ...(data.difficulties !== undefined ? { difficulties: data.difficulties } : {}),
+        ...(data.nextSteps !== undefined ? { nextSteps: data.nextSteps } : {}),
+        ...(data.messageIds && data.messageIds.length > 0
+          ? {
+              messages: {
+                create: data.messageIds.map(messageId => ({ messageId })),
+              },
+            }
+          : {}),
+      },
+      include: {
+        user: { select: { id: true, name: true } },
+      },
+    }) as unknown as CheckInRecord;
+  }
 }
+

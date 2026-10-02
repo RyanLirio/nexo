@@ -74,4 +74,17 @@ export class PrismaConversationRepository extends ConversationRepository {
       update: {},
     });
   }
-}
+
+  async findRecentMessages(
+    userId: string,
+    limit: number = 10,
+  ): Promise<MessageRecord[]> {
+    return this.prisma.message.findMany({
+      where: {
+        conversation: { userId },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    }) as unknown as MessageRecord[];
+  }
+}

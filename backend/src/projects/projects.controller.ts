@@ -37,6 +37,16 @@ export class ProjectsController {
     return this.projects.getById(id);
   }
 
+  @Get(':id/leader-view')
+  @UseGuards(AuthGuard)
+  getLeaderView(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projects.getLeaderView(id, user.id);
+  }
+
+
   @Patch(':id')
   @UseGuards(AuthGuard)
   update(

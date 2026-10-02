@@ -18,8 +18,13 @@ export interface TechnicalProblemRecord {
 }
 
 export abstract class TechnicalProblemRepository {
-  abstract list(query?: string, projectId?: string): Promise<any[]>;
+  abstract list(
+    query?: string,
+    projectId?: string,
+    filter?: { status?: string; technology?: string },
+  ): Promise<any[]>;
   abstract findById(id: string): Promise<any | null>;
+
   abstract create(data: {
     projectId: string;
     authorId: string;
@@ -35,4 +40,6 @@ export abstract class TechnicalProblemRepository {
   abstract isProjectMember(projectId: string, userId: string): Promise<boolean>;
   abstract findSourceCheckIn(id: string): Promise<{ projectId: string } | null>;
   abstract findSourceHelpRequest(id: string): Promise<{ projectId: string } | null>;
+  abstract updateSolution(id: string, solution: string): Promise<TechnicalProblemRecord>;
 }
+

@@ -13,6 +13,8 @@ import { Project, ProjectMember, ProjectStatus, ProjectRole, VALID_PROJECT_STATU
 import { CheckIn } from './check-ins/models';
 import { TechnicalProblem } from './technical-problems/models';
 import { HelpRequest, HelpStatus, HELP_STATUS_TRANSITIONS } from './help-requests/models';
+import { AiToolsService } from './ai/tools/ai-tools.service';
+import { AI_TOOL_DEFINITIONS } from './ai/tools/ai-tools.definitions';
 
 
 test('cria check-in quando a pessoa participa do projeto', async () => {
@@ -754,4 +756,335 @@ test('HelpRequest.validateTransition valida transições de ciclo de vida', () =
   assert.throws(() => HelpRequest.validateTransition(HelpStatus.RESOLVED, HelpStatus.OPEN), BadRequestException);
   assert.throws(() => HelpRequest.validateTransition(HelpStatus.RESOLVED, HelpStatus.IN_PROGRESS), BadRequestException);
 });
+
+// --- AiToolsService & Dispatcher ---
+test('AiToolsService exporta o catálogo de definições com 6 tools', () => {
+  assert.equal(AI_TOOL_DEFINITIONS.length, 6);
+  const toolNames = AI_TOOL_DEFINITIONS.map((t) => t.function.name);
+  assert.deepEqual(toolNames.sort(), [
+    'get_project_context',
+    'get_recent_messages',
+    'get_user_projects',
+    'manage_technical_problem',
+    'save_checkin',
+    'search_knowledge_base',
+  ].sort());
+});
+
+test('AiToolsService.executeTool rejeita ferramenta desconhecida com BadRequestException', async () => {
+  const service = new AiToolsService(
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+  await assert.rejects(
+    service.executeTool('unknown_tool', {}, 'user-1'),
+    BadRequestException,
+  );
+});
+
+test('AiToolsService.executeTool rejeita execução sem userId com BadRequestException', async () => {
+  const service = new AiToolsService(
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+  await assert.rejects(
+    service.executeTool('get_user_projects', {}, ''),
+    BadRequestException,
+  );
+});
+
+test('AiToolsService.executeTool rejeita acesso a projeto de não-membro com ForbiddenException', async () => {
+  const mockProjectsService = {
+    isMember: async () => false,
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+  await assert.rejects(
+    service.executeTool('get_project_context', { projectId: 'proj-secret' }, 'user-stranger'),
+    ForbiddenException,
+  );
+});
+
+test('AiToolsService.executeTool(get_user_projects) retorna lista de projetos ativos do usuário', async () => {
+  let capturedFilter: unknown;
+  const mockProjectsService = {
+    list: async (filter: unknown) => {
+      capturedFilter = filter;
+      return [{ id: 'p1', name: 'Nexo' }];
+    },
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+
+  const result = await service.executeTool('get_user_projects', {}, 'user-1');
+  assert.deepEqual(capturedFilter, { userId: 'user-1', status: 'ACTIVE' });
+  assert.deepEqual(result, [{ id: 'p1', name: 'Nexo' }]);
+});
+
+test('AiToolsService.executeTool(get_project_context) agrega metadados, prioridade, estimativa e membros', async () => {
+  const mockProjectsService = {
+    isMember: async () => true,
+    getById: async (id: string) => ({
+      id,
+      name: 'Nexo AI',
+      description: 'Gestão Inteligente',
+      status: 'ACTIVE',
+      priority: 85,
+      estimatedCompletionAt: new Date('2026-12-31'),
+      team: { id: 'team-1', name: 'Alpha' },
+      leader: { id: 'user-1', name: 'Gustavo' },
+      responsibleUser: { id: 'user-2', name: 'Ryan' },
+      members: [
+        { userId: 'user-1', role: 'OWNER', user: { name: 'Gustavo', email: 'g@example.com' } },
+        { userId: 'user-2', role: 'MEMBER', user: { name: 'Ryan', email: 'r@example.com' } },
+      ],
+      checkIns: [{ id: 'chk-1', summary: 'Daily ok' }],
+      technicalProblems: [{ id: 'tp-1', title: 'OAuth expira', technology: 'Auth' }],
+    }),
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+
+  const context: any = await service.executeTool('get_project_context', { projectId: 'p1' }, 'user-1');
+  assert.equal(context.id, 'p1');
+  assert.equal(context.name, 'Nexo AI');
+  assert.equal(context.priority, 85);
+  assert.equal(context.members.length, 2);
+  assert.equal(context.latestCheckIn.id, 'chk-1');
+  assert.equal(context.openTechnicalProblems[0].id, 'tp-1');
+});
+
+test('AiToolsService.executeTool(get_recent_messages) consulta mensagens via conversationRepo', async () => {
+  let capturedUserId: string | undefined;
+  let capturedLimit: number | undefined;
+  const mockConversationRepo = {
+    findRecentMessages: async (userId: string, limit?: number) => {
+      capturedUserId = userId;
+      capturedLimit = limit;
+      return [{ id: 'msg-1', content: 'Olá', role: 'USER' }];
+    },
+  };
+  const service = new AiToolsService(
+    {} as any,
+    {} as any,
+    {} as any,
+    mockConversationRepo as any,
+  );
+
+  const res: any = await service.executeTool('get_recent_messages', { limit: 5 }, 'user-42');
+  assert.equal(capturedUserId, 'user-42');
+  assert.equal(capturedLimit, 5);
+  assert.equal(res.messages.length, 1);
+});
+
+test('AiToolsService.executeTool(save_checkin) chama checkInsService.saveCheckIn', async () => {
+  let savedArgs: unknown;
+  const mockProjectsService = {
+    isMember: async () => true,
+  };
+  const mockCheckInsService = {
+    saveCheckIn: async (projectId: string, args: unknown, userId: string) => {
+      savedArgs = { projectId, args, userId };
+      return { id: 'checkin-1', projectId, userId, summary: 'Progresso diário' };
+    },
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    mockCheckInsService as any,
+    {} as any,
+    {} as any,
+  );
+
+  const res: any = await service.executeTool('save_checkin', { projectId: 'p1', summary: 'Feito feature A' }, 'user-1');
+  assert.equal(res.id, 'checkin-1');
+  assert.deepEqual(savedArgs, {
+    projectId: 'p1',
+    args: { projectId: 'p1', summary: 'Feito feature A' },
+    userId: 'user-1',
+  });
+});
+
+test('AiToolsService.executeTool(manage_technical_problem, create) chama technicalProblemService.create', async () => {
+  let createdData: unknown;
+  const mockProjectsService = {
+    isMember: async () => true,
+  };
+  const mockTechService = {
+    create: async (args: unknown, userId: string) => {
+      createdData = { args, userId };
+      return { id: 'tp-new', title: 'Bug SSL' };
+    },
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    {} as any,
+    mockTechService as any,
+    {} as any,
+  );
+
+  const res: any = await service.executeTool(
+    'manage_technical_problem',
+    { action: 'create', projectId: 'p1', title: 'Bug SSL', problem: 'SSL expirado' },
+    'user-1',
+  );
+  assert.equal(res.id, 'tp-new');
+  assert.equal((createdData as any).userId, 'user-1');
+});
+
+test('AiToolsService.executeTool(manage_technical_problem, resolve) chama technicalProblemService.updateSolution', async () => {
+  let resolvedData: unknown;
+  const mockProjectsService = {
+    isMember: async () => true,
+  };
+  const mockTechService = {
+    updateSolution: async (problemId: string, solution: string, userId: string) => {
+      resolvedData = { problemId, solution, userId };
+      return { id: problemId, solution };
+    },
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    {} as any,
+    mockTechService as any,
+    {} as any,
+  );
+
+  const res: any = await service.executeTool(
+    'manage_technical_problem',
+    { action: 'resolve', projectId: 'p1', problemId: 'tp-10', solution: 'Atualizar certbot' },
+    'user-1',
+  );
+  assert.equal(res.id, 'tp-10');
+  assert.deepEqual(resolvedData, {
+    problemId: 'tp-10',
+    solution: 'Atualizar certbot',
+    userId: 'user-1',
+  });
+});
+
+test('AiToolsService.executeTool(search_knowledge_base) delega para technicalProblemService.list', async () => {
+  let queryCaptured: string | undefined;
+  let projectCaptured: string | undefined;
+  const mockProjectsService = {
+    isMember: async () => true,
+  };
+  const mockTechService = {
+    list: async (query?: string, projectId?: string) => {
+      queryCaptured = query;
+      projectCaptured = projectId;
+      return [{ id: 'tp-1', solution: 'Reiniciar gateway' }];
+    },
+  };
+  const service = new AiToolsService(
+    mockProjectsService as any,
+    {} as any,
+    mockTechService as any,
+    {} as any,
+  );
+
+  const res: any = await service.executeTool('search_knowledge_base', { query: 'gateway', projectId: 'p1' }, 'user-1');
+  assert.equal(queryCaptured, 'gateway');
+  assert.equal(projectCaptured, 'p1');
+  assert.equal(res.length, 1);
+});
+
+// --- Ticket 4: Endpoints e Serviços da Visão do Líder ---
+test('ProjectsService.getLeaderView retorna dados consolidados quando usuário é membro/líder', async () => {
+  const mockRepo = {
+    findById: async (id: string) => ({
+      id,
+      name: 'Projeto Beta',
+      leaderId: 'leader-1',
+      teamId: 't-1',
+      priority: 50,
+      estimatedCompletionAt: null,
+      members: [{ userId: 'leader-1', role: 'OWNER' }],
+      checkIns: [{ id: 'chk-1', summary: 'Status ok' }],
+      technicalProblems: [{ id: 'tp-1', title: 'DB lock' }],
+    }),
+    findMember: async () => null,
+    findTeamMember: async () => null,
+  };
+  const service = new ProjectsService(mockRepo as any);
+  const view = await service.getLeaderView('p-beta', 'leader-1');
+  assert.equal(view.id, 'p-beta');
+  assert.equal(view.priority, 50);
+  assert.equal(view.latestCheckIn.id, 'chk-1');
+  assert.equal(view.openTechnicalProblems[0].id, 'tp-1');
+});
+
+test('ProjectsService.getLeaderView rejeita usuário não membro com ForbiddenException', async () => {
+  const mockRepo = {
+    findById: async (id: string) => ({
+      id,
+      name: 'Projeto Beta',
+      leaderId: 'leader-1',
+      teamId: 't-1',
+    }),
+    findMember: async () => null,
+    findTeamMember: async () => null,
+  };
+  const service = new ProjectsService(mockRepo as any);
+  await assert.rejects(
+    service.getLeaderView('p-beta', 'user-outsider'),
+    ForbiddenException,
+  );
+});
+
+test('CheckInsService.list repassa filtros de userId e datas ao repositório', async () => {
+  let capturedFilter: unknown;
+  const mockRepo = {
+    projectExists: async () => true,
+    listByProject: async (projectId: string, filter?: unknown) => {
+      capturedFilter = filter;
+      return [];
+    },
+  };
+  const service = new CheckInsService(mockRepo as any);
+  const startDate = new Date('2026-01-01');
+  const endDate = new Date('2026-01-31');
+  await service.list('p-1', { userId: 'u-1', startDate, endDate });
+  assert.deepEqual(capturedFilter, { userId: 'u-1', startDate, endDate });
+});
+
+test('TechnicalProblemService.updateSolution atualiza solução para membro autorizado', async () => {
+  let updatedSolution: string | undefined;
+  const mockRepo = {
+    findById: async (id: string) => ({ id, projectId: 'p-1', authorId: 'u-1' }),
+    isProjectMember: async () => true,
+    updateSolution: async (id: string, solution: string) => {
+      updatedSolution = solution;
+      return { id, solution } as any;
+    },
+  };
+  const service = new TechnicalProblemService(mockRepo as any);
+  const res = await service.updateSolution('tp-1', 'Corrigido com retry', 'u-1');
+  assert.equal(updatedSolution, 'Corrigido com retry');
+  assert.equal(res.solution, 'Corrigido com retry');
+});
+
+test('TechnicalProblemService.updateSolution rejeita solução vazia com BadRequestException', async () => {
+  const service = new TechnicalProblemService({} as any);
+  await assert.rejects(
+    service.updateSolution('tp-1', '   ', 'u-1'),
+    BadRequestException,
+  );
+});
+
 

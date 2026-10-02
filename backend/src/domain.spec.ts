@@ -245,6 +245,190 @@ test('criação de projeto aceita líder com papel ADMIN', async () => {
   assert.equal(result.id, 'proj-admin');
 });
 
+test('criação de projeto aceita estimatedCompletionAt e priority válidos', async () => {
+  let projectCreated: Record<string, unknown> | undefined;
+  const repo = {
+    findTeam: async () => ({ id: 'team-1' }),
+    create: async (data: Record<string, unknown>) => {
+      projectCreated = data;
+      return { id: 'proj-priority', ...data };
+    },
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
+
+  const targetDate = '2026-12-31T23:59:59.000Z';
+  const result = await service.create({
+    teamId: 'team-1',
+    name: 'Projeto Prioritário',
+    priority: 85,
+    estimatedCompletionAt: targetDate,
+  });
+
+  assert.equal(result.id, 'proj-priority');
+  assert.equal(projectCreated?.priority, 85);
+  assert.ok(projectCreated?.estimatedCompletionAt instanceof Date);
+  assert.equal((projectCreated?.estimatedCompletionAt as Date).toISOString(), targetDate);
+});
+
+test('criação de projeto com campos de estimativa e prioridade omitidos persiste como null', async () => {
+  let projectCreated: Record<string, unknown> | undefined;
+  const repo = {
+    findTeam: async () => ({ id: 'team-1' }),
+    create: async (data: Record<string, unknown>) => {
+      projectCreated = data;
+      return { id: 'proj-sem-prioridade', ...data };
+    },
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
+
+  await service.create({
+    teamId: 'team-1',
+    name: 'Projeto Normal',
+  });
+
+  assert.equal(projectCreated?.priority, null);
+  assert.equal(projectCreated?.estimatedCompletionAt, null);
+});
+
+test('criação de projeto rejeita prioridade fora do intervalo 0 a 100', async () => {
+  const repo = {
+    findTeam: async () => ({ id: 'team-1' }),
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
+
+  await assert.rejects(
+    service.create({
+      teamId: 'team-1',
+      name: 'Projeto Inválido',
+      priority: 150,
+    }),
+    BadRequestException,
+  );
+
+  await assert.rejects(
+    service.create({
+      teamId: 'team-1',
+      name: 'Projeto Inválido Negativo',
+      priority: -5,
+    }),
+    BadRequestException,
+  );
+});
+
+test('criação de projeto rejeita data de estimativa inválida', async () => {
+  const repo = {
+    findTeam: async () => ({ id: 'team-1' }),
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
+
+  await assert.rejects(
+    service.create({
+      teamId: 'team-1',
+      name: 'Projeto Data Inválida',
+      estimatedCompletionAt: 'data-invalida',
+    }),
+    BadRequestException,
+  );
+});
+
+test('atualização de projeto permite que líder atualize estimativa e prioridade', async () => {
+  let updateData: Record<string, unknown> | undefined;
+  const repo = {
+    findById: async () => ({
+      id: 'proj-1',
+      teamId: 'team-1',
+      leaderId: 'user-leader',
+      status: 'ACTIVE',
+    }),
+    findTeamMember: async () => null,
+    findMember: async () => null,
+    update: async (id: string, data: Record<string, unknown>) => {
+      updateData = data;
+      return { id, ...data };
+    },
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
+
+  const targetDate = '2026-11-30T10:00:00.000Z';
+  const updated = await service.update('proj-1', {
+    priority: 90,
+    estimatedCompletionAt: targetDate,
+  }, 'user-leader');
+
+  assert.equal(updateData?.priority, 90);
+  assert.ok(updateData?.estimatedCompletionAt instanceof Date);
+  assert.equal((updateData?.estimatedCompletionAt as Date).toISOString(), targetDate);
+  assert.equal(updated.id, 'proj-1');
+});
+
+test('atualização de projeto permite que desenvolvedor membro da equipe atualize dados', async () => {
+  let updateData: Record<string, unknown> | undefined;
+  const repo = {
+    findById: async () => ({
+      id: 'proj-1',
+      teamId: 'team-1',
+      leaderId: 'user-leader',
+      status: 'ACTIVE',
+    }),
+    findTeamMember: async (teamId: string, userId: string) => {
+      if (teamId === 'team-1' && userId === 'user-dev') return { userId: 'user-dev', role: 'MEMBER' };
+      return null;
+    },
+    findMember: async () => null,
+    update: async (id: string, data: Record<string, unknown>) => {
+      updateData = data;
+      return { id, ...data };
+    },
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
+
+  await service.update('proj-1', {
+    priority: 40,
+    name: 'Projeto Renomeado',
+  }, 'user-dev');
+
+  assert.equal(updateData?.priority, 40);
+  assert.equal(updateData?.name, 'Projeto Renomeado');
+});
+
+test('atualização de projeto rejeita usuário sem vínculo com equipe ou liderança com ForbiddenException', async () => {
+  const repo = {
+    findById: async () => ({
+      id: 'proj-1',
+      teamId: 'team-1',
+      leaderId: 'user-leader',
+      status: 'ACTIVE',
+    }),
+    findTeamMember: async () => null,
+    findMember: async () => null,
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
+
+  await assert.rejects(
+    service.update('proj-1', { priority: 50 }, 'user-estranho'),
+    ForbiddenException,
+  );
+});
+
+test('atualização de projeto rejeita prioridade fora de [0, 100]', async () => {
+  const repo = {
+    findById: async () => ({
+      id: 'proj-1',
+      teamId: 'team-1',
+      leaderId: 'user-leader',
+      status: 'ACTIVE',
+    }),
+  } as unknown as import('./projects/project.repository').ProjectRepository;
+  const service = new ProjectsService(repo);
+
+  await assert.rejects(
+    service.update('proj-1', { priority: 120 }, 'user-leader'),
+    BadRequestException,
+  );
+});
+
+
+
 
 test('alteração de status de projeto grava auditoria e valida status válidos', async () => {
   let statusUpdate: Record<string, unknown> | undefined;
@@ -478,6 +662,29 @@ test('Project.buildInitialMembers monta lista de membros corretamente', () => {
   assert.deepEqual(Project.buildInitialMembers(null, 'resp-1'), [
     { userId: 'resp-1', role: 'MEMBER' },
   ]);
+});
+
+test('Project.validatePriority aceita valores inteiros entre 0 e 100 e rejeita inválidos', () => {
+  assert.equal(Project.validatePriority(0), 0);
+  assert.equal(Project.validatePriority(50), 50);
+  assert.equal(Project.validatePriority(100), 100);
+  assert.equal(Project.validatePriority('75'), 75);
+  assert.equal(Project.validatePriority(null), null);
+  assert.equal(Project.validatePriority(undefined), null);
+  assert.throws(() => Project.validatePriority(-1), BadRequestException);
+  assert.throws(() => Project.validatePriority(101), BadRequestException);
+  assert.throws(() => Project.validatePriority(45.5), BadRequestException);
+  assert.throws(() => Project.validatePriority('invalido'), BadRequestException);
+});
+
+test('Project.validateEstimatedCompletionAt aceita data válida e rejeita inválida', () => {
+  const dateStr = '2026-12-31T00:00:00.000Z';
+  const parsed = Project.validateEstimatedCompletionAt(dateStr);
+  assert.ok(parsed instanceof Date);
+  assert.equal(parsed.toISOString(), dateStr);
+  assert.equal(Project.validateEstimatedCompletionAt(null), null);
+  assert.equal(Project.validateEstimatedCompletionAt(undefined), null);
+  assert.throws(() => Project.validateEstimatedCompletionAt('data-invalida'), BadRequestException);
 });
 
 test('Project.validateMemberRole valida e normaliza papel no projeto', () => {

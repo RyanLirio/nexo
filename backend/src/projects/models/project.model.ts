@@ -17,6 +17,8 @@ export class Project {
   readonly leaderId: string | null;
   readonly responsibleUserId: string | null;
   readonly createdBy: string | null;
+  readonly estimatedCompletionAt: Date | null;
+  readonly priority: number | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -29,6 +31,8 @@ export class Project {
     leaderId?: string | null;
     responsibleUserId?: string | null;
     createdBy?: string | null;
+    estimatedCompletionAt?: Date | null;
+    priority?: number | null;
     createdAt: Date;
     updatedAt: Date;
   }) {
@@ -40,8 +44,34 @@ export class Project {
     this.leaderId = props.leaderId ?? null;
     this.responsibleUserId = props.responsibleUserId ?? null;
     this.createdBy = props.createdBy ?? null;
+    this.estimatedCompletionAt = props.estimatedCompletionAt ?? null;
+    this.priority = props.priority ?? null;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
+  }
+
+  /**
+   * Valida se a prioridade do projeto é um número inteiro no intervalo de 0 a 100.
+   */
+  static validatePriority(priority: unknown): number | null {
+    if (priority === undefined || priority === null || priority === '') return null;
+    const num = typeof priority === 'number' ? priority : Number(priority);
+    if (!Number.isInteger(num) || isNaN(num) || num < 0 || num > 100) {
+      throw new BadRequestException('A prioridade do projeto deve ser um número inteiro entre 0 e 100.');
+    }
+    return num;
+  }
+
+  /**
+   * Valida se a estimativa de conclusão é uma data válida.
+   */
+  static validateEstimatedCompletionAt(date: unknown): Date | null {
+    if (date === undefined || date === null || date === '') return null;
+    const parsed = date instanceof Date ? date : new Date(String(date));
+    if (isNaN(parsed.getTime())) {
+      throw new BadRequestException('A data estimada de conclusão informada é inválida.');
+    }
+    return parsed;
   }
 
   /** Verifica se o projeto está em um estado ativo (não concluído). */

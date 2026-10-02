@@ -37,6 +37,16 @@ export class ProjectsController {
     return this.projects.getById(id);
   }
 
+  @Patch(':id')
+  @UseGuards(AuthGuard)
+  update(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projects.update(id, body, user.id);
+  }
+
   @Patch(':id/status')
   @UseGuards(AuthGuard)
   changeStatus(

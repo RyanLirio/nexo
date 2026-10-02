@@ -46,6 +46,8 @@ export class PrismaProjectRepository extends ProjectRepository {
     leaderId?: string | null;
     responsibleUserId?: string | null;
     createdBy?: string | null;
+    estimatedCompletionAt?: Date | null;
+    priority?: number | null;
     members?: { userId: string; role: 'OWNER' | 'MEMBER' }[];
   }): Promise<ProjectRecord> {
     return this.prisma.project.create({
@@ -56,6 +58,8 @@ export class PrismaProjectRepository extends ProjectRepository {
         leaderId: data.leaderId,
         responsibleUserId: data.responsibleUserId,
         createdBy: data.createdBy,
+        estimatedCompletionAt: data.estimatedCompletionAt,
+        priority: data.priority,
         ...(data.members && data.members.length > 0
           ? {
               members: {
@@ -67,12 +71,22 @@ export class PrismaProjectRepository extends ProjectRepository {
     }) as unknown as ProjectRecord;
   }
 
-  async update(id: string, data: { name?: string; description?: string | null }): Promise<ProjectRecord> {
+  async update(
+    id: string,
+    data: {
+      name?: string;
+      description?: string | null;
+      estimatedCompletionAt?: Date | null;
+      priority?: number | null;
+    },
+  ): Promise<ProjectRecord> {
     return this.prisma.project.update({
       where: { id },
       data: {
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.estimatedCompletionAt !== undefined ? { estimatedCompletionAt: data.estimatedCompletionAt } : {}),
+        ...(data.priority !== undefined ? { priority: data.priority } : {}),
       },
     }) as unknown as ProjectRecord;
   }

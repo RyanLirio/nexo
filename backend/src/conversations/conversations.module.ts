@@ -25,6 +25,6 @@ import { TechnicalProblemModule } from '../technical-problems/technical-problem.
       useClass: PrismaConversationRepository,
     },
   ],
-  exports: [ConversationsService],
+  exports: [ConversationsService, ConversationRepository],
 })
 export class ConversationsModule {}

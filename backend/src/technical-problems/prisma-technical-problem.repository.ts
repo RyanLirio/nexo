@@ -156,16 +156,7 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
     limit = DEFAULT_SIMILARITY_LIMIT,
     threshold = DEFAULT_SIMILARITY_THRESHOLD,
   ): Promise<SimilarTechnicalProblem[]> {
-    if (
-      embedding.length !== EMBEDDING_DIMENSIONS
-      || embedding.some((value) => !Number.isFinite(value))
-    ) {
-      throw new Error(
-        `O embedding deve possuir ${EMBEDDING_DIMENSIONS} valores numéricos.`,
-      );
-    }
-
-    const vector = `[${embedding.join(',')}]`;
+    const vector = this.toVector(embedding);
 
     return this.prisma.$queryRaw<SimilarTechnicalProblem[]>`
       WITH query_embedding AS (
@@ -205,6 +196,44 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
       ORDER BY similarity DESC
       LIMIT ${limit}
     `;
+  }
+
+  async hasProblemEmbedding(id: string): Promise<boolean> {
+    const rows = await this.prisma.$queryRaw<Array<{ present: boolean }>>`
+      SELECT "problemEmbedding" IS NOT NULL AS present
+      FROM "TechnicalProblem" WHERE id = ${id}
+    `;
+    return rows[0]?.present ?? false;
+  }
+
+  async setProblemEmbedding(id: string, embedding: number[]): Promise<boolean> {
+    const vector = this.toVector(embedding);
+    const changed = await this.prisma.$executeRaw`
+      UPDATE "TechnicalProblem"
+      SET "problemEmbedding" = ${vector}::vector(1536)
+      WHERE id = ${id} AND "problemEmbedding" IS NULL
+    `;
+    return changed === 1;
+  }
+
+  async listWithoutEmbedding(): Promise<Array<{ id: string; problem: string }>> {
+    return this.prisma.$queryRaw`
+      SELECT id, problem FROM "TechnicalProblem"
+      WHERE "problemEmbedding" IS NULL ORDER BY "createdAt", id
+    `;
+  }
+
+  private toVector(embedding: number[]): string {
+    if (
+      embedding.length !== EMBEDDING_DIMENSIONS
+      || embedding.some((value) => !Number.isFinite(value))
+    ) {
+      throw new Error(
+        `O embedding deve possuir ${EMBEDDING_DIMENSIONS} valores numéricos.`,
+      );
+    }
+
+    return `[${embedding.join(',')}]`;
   }
 }
 

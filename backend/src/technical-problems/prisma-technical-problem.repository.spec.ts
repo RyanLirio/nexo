@@ -117,3 +117,22 @@ test('busca pgvector rejeita embedding com dimensão diferente de 1536', async (
   );
   assert.equal(harness.capturedQuery(), undefined);
 });
+
+test('persistência do vetor usa SQL parametrizado e só preenche valores nulos', async () => {
+  let captured: CapturedQuery | undefined;
+  const prisma = {
+    $executeRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      captured = { sql: strings.join('?').replace(/\s+/g, ' '), values };
+      return 1;
+    },
+  } as unknown as PrismaService;
+  const repository = new PrismaTechnicalProblemRepository(prisma);
+  const id = "id' OR 1=1";
+  assert.equal(await repository.setProblemEmbedding(id, Array(1536).fill(0.01)), true);
+  assert.ok(captured);
+  assert.match(captured.sql, /::vector\(1536\)/);
+  assert.match(captured.sql, /WHERE id = \? AND "problemEmbedding" IS NULL/);
+  assert.doesNotMatch(captured.sql, /OR 1=1/);
+  assert.equal(captured.values[1], id);
+  await assert.rejects(repository.setProblemEmbedding(id, [NaN]), /1536/);
+});

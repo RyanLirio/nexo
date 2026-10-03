@@ -51,6 +51,9 @@ export abstract class TechnicalProblemRepository {
   abstract findSourceCheckIn(id: string): Promise<{ projectId: string } | null>;
   abstract findSourceHelpRequest(id: string): Promise<{ projectId: string } | null>;
   abstract updateSolution(id: string, solution: string): Promise<TechnicalProblemRecord>;
+  abstract hasProblemEmbedding(id: string): Promise<boolean>;
+  abstract setProblemEmbedding(id: string, embedding: number[]): Promise<boolean>;
+  abstract listWithoutEmbedding(): Promise<Array<{ id: string; problem: string }>>;
   abstract searchSimilar(
     userId: string,
     embedding: number[],

@@ -15,6 +15,11 @@ import { TechnicalProblem } from './technical-problems/models';
 import { HelpRequest, HelpStatus, HELP_STATUS_TRANSITIONS } from './help-requests/models';
 import { AiToolsService } from './ai/tools/ai-tools.service';
 import { AI_TOOL_DEFINITIONS } from './ai/tools/ai-tools.definitions';
+import { OpenAIService } from './ai/openai.service';
+
+const embeddingUnavailable = {
+  generateEmbedding: async () => { throw new Error('Provider unavailable in unit test'); },
+} as unknown as OpenAIService;
 
 
 test('cria check-in quando a pessoa participa do projeto', async () => {
@@ -57,7 +62,7 @@ test('busca de problemas técnicos exige autorização de compartilhamento', asy
       return [];
     },
   } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
-  const service = new TechnicalProblemService(repo);
+  const service = new TechnicalProblemService(repo, embeddingUnavailable);
 
   await service.list('porta');
   assert.equal(queryCaptured, 'porta');
@@ -68,7 +73,7 @@ test('rejeita criação de problema técnico com duas origens simultâneas', asy
     projectExists: async () => true,
     isProjectMember: async () => true,
   } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
-  const service = new TechnicalProblemService(repo);
+  const service = new TechnicalProblemService(repo, embeddingUnavailable);
 
   await assert.rejects(
     service.create({
@@ -94,7 +99,7 @@ test('cria problema técnico mesmo sem solução', async () => {
       return { id: 'know-pending', ...data } as any;
     },
   } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
-  const service = new TechnicalProblemService(repo);
+  const service = new TechnicalProblemService(repo, embeddingUnavailable);
 
   await service.create({
     projectId: 'project-1',
@@ -117,7 +122,7 @@ test('continua criando problema técnico com problema e solução', async () => 
       return { id: 'know-solved', ...data } as any;
     },
   } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
-  const service = new TechnicalProblemService(repo);
+  const service = new TechnicalProblemService(repo, embeddingUnavailable);
 
   await service.create({
     projectId: 'project-1',
@@ -140,7 +145,7 @@ test('autorização de problema técnico preenche autorizador e timestamp juntos
       return { id, authorId, sharingAuthorizedBy: authorId, sharingAuthorizedAt: date } as any;
     },
   } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
-  const service = new TechnicalProblemService(repo);
+  const service = new TechnicalProblemService(repo, embeddingUnavailable);
 
   await service.authorize('know-1', { authorId: 'user-1' });
 
@@ -153,7 +158,7 @@ test('rejeita autorização de problema técnico feita por outro usuário que n�
   const repo = {
     findById: async () => ({ id: 'know-1', authorId: 'user-ryan', sharingAuthorizedAt: null }),
   } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
-  const service = new TechnicalProblemService(repo);
+  const service = new TechnicalProblemService(repo, embeddingUnavailable);
 
   await assert.rejects(
     service.authorize('know-1', { authorId: 'user-gustavo' }),
@@ -1073,14 +1078,14 @@ test('TechnicalProblemService.updateSolution atualiza solução para membro auto
       return { id, solution } as any;
     },
   };
-  const service = new TechnicalProblemService(mockRepo as any);
+  const service = new TechnicalProblemService(mockRepo as any, embeddingUnavailable);
   const res = await service.updateSolution('tp-1', 'Corrigido com retry', 'u-1');
   assert.equal(updatedSolution, 'Corrigido com retry');
   assert.equal(res.solution, 'Corrigido com retry');
 });
 
 test('TechnicalProblemService.updateSolution rejeita solução vazia com BadRequestException', async () => {
-  const service = new TechnicalProblemService({} as any);
+  const service = new TechnicalProblemService({} as any, embeddingUnavailable);
   await assert.rejects(
     service.updateSolution('tp-1', '   ', 'u-1'),
     BadRequestException,

@@ -1,11 +1,28 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { TechnicalProblemRecord, TechnicalProblemRepository } from './technical-problem.repository';
 import { TechnicalProblem } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
+import { OpenAIService } from '../ai/openai.service';
 
 @Injectable()
 export class TechnicalProblemService {
-  constructor(private readonly technicalProblemRepo: TechnicalProblemRepository) {}
+  private readonly logger = new Logger(TechnicalProblemService.name);
+
+  constructor(
+    private readonly technicalProblemRepo: TechnicalProblemRepository,
+    private readonly openAIService: OpenAIService,
+  ) {}
+
+  private warnEmbeddingFailure(id: string): void {
+    // Do not log provider errors: they may contain request text or credentials.
+    this.logger.warn(`Embedding indisponível para TechnicalProblem ${id}; executar backfill posteriormente.`);
+  }
+
+  async ensureProblemEmbedding(id: string, problem: string): Promise<boolean> {
+    if (await this.technicalProblemRepo.hasProblemEmbedding(id)) return false;
+    const embedding = await this.openAIService.generateEmbedding(problem);
+    return this.technicalProblemRepo.setProblemEmbedding(id, embedding);
+  }
 
   async list(
     query?: string,
@@ -71,7 +88,14 @@ export class TechnicalProblemService {
       }
     }
 
-    return this.technicalProblemRepo.create({
+    let embedding: number[] | null = null;
+    try {
+      embedding = await this.openAIService.generateEmbedding(problem);
+    } catch {
+      // The business record must survive an unavailable enrichment provider.
+    }
+
+    const created = await this.technicalProblemRepo.create({
       projectId,
       authorId,
       title,
@@ -81,6 +105,16 @@ export class TechnicalProblemService {
       sourceCheckInId,
       sourceHelpRequestId,
     });
+    if (embedding) {
+      try {
+        await this.technicalProblemRepo.setProblemEmbedding(created.id, embedding);
+      } catch {
+        this.warnEmbeddingFailure(created.id);
+      }
+    } else {
+      this.warnEmbeddingFailure(created.id);
+    }
+    return created;
   }
 
   async authorize(id: string, value: unknown, currentUserId?: string): Promise<TechnicalProblemRecord> {
@@ -115,7 +149,13 @@ export class TechnicalProblemService {
       }
     }
 
-    return this.technicalProblemRepo.updateSolution(id, solution.trim());
+    const updated = await this.technicalProblemRepo.updateSolution(id, solution.trim());
+    try {
+      await this.ensureProblemEmbedding(id, technicalProblem.problem);
+    } catch {
+      this.warnEmbeddingFailure(id);
+    }
+    return updated;
   }
 }
 

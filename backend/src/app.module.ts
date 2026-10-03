@@ -16,6 +16,7 @@ import { RolesGuard } from './common/auth/roles.guard';
 import { AccessControlService, PrismaAccessControlService } from './common/auth/access-control.service';
 
 import { ConversationsModule } from './conversations/conversations.module';
+import { AiToolsModule } from './ai/tools/ai-tools.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ConversationsModule } from './conversations/conversations.module';
     TeamsModule,
     ProjectsModule,
     ConversationsModule,
+    AiToolsModule,
     CheckInsModule,
     TechnicalProblemModule,
     HelpRequestsModule,

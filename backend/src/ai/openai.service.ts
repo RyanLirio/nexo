@@ -41,16 +41,15 @@ const ProjectContextExtraction = z.object({
 
 @Injectable()
 export class OpenAIService {
-  private readonly client: OpenAI;
+  private client?: OpenAI;
 
-  constructor() {
-    this.client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+  private getClient(): OpenAI {
+    this.client ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    return this.client;
   }
 
   async generateEmbedding(text: string): Promise<number[]> {
-    const response = await this.client.embeddings.create({
+    const response = await this.getClient().embeddings.create({
       model: 'text-embedding-3-small',
       input: text,
     });
@@ -59,7 +58,7 @@ export class OpenAIService {
   }
 
   async analyzeTechnicalMessage(text: string, model: string) {
-    const response = await this.client.responses.parse({
+    const response = await this.getClient().responses.parse({
       model,
       instructions: `
 Classifique a mensagem de trabalho em uma destas categorias:
@@ -116,7 +115,7 @@ Para DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
       currentNextSteps: project.currentNextSteps ?? null,
     }));
 
-    const response = await this.client.responses.parse({
+    const response = await this.getClient().responses.parse({
       model: 'gpt-5.4-mini',
       instructions: `
       Você recebe uma mensagem de trabalho de um usuário e a lista de projetos ativos dos quais ele participa.

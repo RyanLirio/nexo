@@ -25,11 +25,12 @@ export class PrismaProjectRepository extends ProjectRepository {
     });
   }
 
-  async list(filter?: { teamId?: string; status?: string; userId?: string }): Promise<any[]> {
+  async list(filter?: { teamId?: string; status?: string; userId?: string; viewerId?: string }): Promise<any[]> {
     const where: Record<string, unknown> = {};
     if (filter?.teamId) where.teamId = filter.teamId;
     if (filter?.status) where.status = filter.status;
     if (filter?.userId) where.members = { some: { userId: filter.userId } };
+    if (filter?.viewerId) where.team = { members: { some: { userId: filter.viewerId } } };
 
     return this.prisma.project.findMany({
       where,

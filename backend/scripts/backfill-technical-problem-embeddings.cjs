@@ -4,6 +4,7 @@ const { PrismaService } = require('../dist/prisma.service');
 const { OpenAIService } = require('../dist/ai/openai.service');
 const { TechnicalProblemService } = require('../dist/technical-problems/technical-problem.service');
 const { PrismaTechnicalProblemRepository } = require('../dist/technical-problems/prisma-technical-problem.repository');
+const { PrismaAccessControlService } = require('../dist/common/auth/access-control.service');
 
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
@@ -19,7 +20,7 @@ async function main() {
     console.log(`TechnicalProblems sem embedding: ${pending.length}`);
     if (dryRun || pending.length === 0) return;
     if (!process.env.OPENAI_API_KEY) throw new Error('Configure OPENAI_API_KEY para executar o backfill.');
-    const service = new TechnicalProblemService(repository, new OpenAIService());
+    const service = new TechnicalProblemService(repository, new OpenAIService(), new PrismaAccessControlService(prisma));
     let succeeded = 0;
     let failed = 0;
     let skipped = 0;

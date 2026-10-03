@@ -1,8 +1,12 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { TechnicalProblemRecord, TechnicalProblemRepository } from './technical-problem.repository';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { SharedTechnicalProblem, SimilarTechnicalProblem, TechnicalProblemFilter, TechnicalProblemRecord, TechnicalProblemRepository } from './technical-problem.repository';
 import { TechnicalProblem } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
 import { OpenAIService } from '../ai/openai.service';
+import { AccessControlService } from '../common/auth/access-control.service';
+
+const SIMILARITY_LIMIT = 5;
+const SIMILARITY_THRESHOLD = 0.78;
 
 @Injectable()
 export class TechnicalProblemService {
@@ -11,6 +15,7 @@ export class TechnicalProblemService {
   constructor(
     private readonly technicalProblemRepo: TechnicalProblemRepository,
     private readonly openAIService: OpenAIService,
+    private readonly accessControl: AccessControlService,
   ) {}
 
   private warnEmbeddingFailure(id: string): void {
@@ -27,8 +32,10 @@ export class TechnicalProblemService {
   async list(
     query?: string,
     projectId?: string,
-    filter?: { status?: string; technology?: string; onlyAuthorized?: boolean },
-  ): Promise<any[]> {
+    filter?: TechnicalProblemFilter,
+    userId?: string,
+  ): Promise<SharedTechnicalProblem[]> {
+    this.requireUser(userId);
     if (query !== undefined && (typeof query !== 'string' || query.length > 200)) {
       throw new BadRequestException('A busca deve ter até 200 caracteres.');
     }
@@ -38,16 +45,38 @@ export class TechnicalProblemService {
     if (filter?.status && filter.status !== 'OPEN' && filter.status !== 'RESOLVED') {
       throw new BadRequestException('Status inválido. Use OPEN ou RESOLVED.');
     }
-    return this.technicalProblemRepo.list(query, projectId, filter);
+    return this.technicalProblemRepo.list(query, projectId, filter, {
+      userId,
+      isAdmin: await this.accessControl.isAdmin(userId),
+    });
   }
 
 
-  async getById(id: string): Promise<any> {
+  async getById(id: string, userId: string): Promise<TechnicalProblemRecord> {
+    this.requireUser(userId);
     const technicalProblem = await this.technicalProblemRepo.findById(id);
-    if (!technicalProblem || !technicalProblem.sharingAuthorizedAt) {
+    if (!technicalProblem || !technicalProblem.sharingAuthorizedAt
+      || !(await this.canReadProject(technicalProblem.projectId, userId))) {
       throw new NotFoundException('Problema técnico compartilhado não encontrado.');
     }
     return technicalProblem;
+  }
+
+  private requireUser(userId: string | undefined): asserts userId is string {
+    if (!userId?.trim()) throw new UnauthorizedException('Usuário não identificado.');
+  }
+
+  private async canReadProject(projectId: string, userId: string): Promise<boolean> {
+    if (await this.accessControl.isAdmin(userId)) return true;
+    const teamId = await this.technicalProblemRepo.findProjectTeamId(projectId);
+    return teamId !== null && this.accessControl.isTeamMember(userId, teamId);
+  }
+
+  async searchSimilarByText(problem: string, userId: string): Promise<SimilarTechnicalProblem[]> {
+    this.requireUser(userId);
+    const text = requiredText({ problem }, 'problem');
+    const embedding = await this.openAIService.generateEmbedding(text);
+    return this.technicalProblemRepo.searchSimilar(userId, embedding, SIMILARITY_LIMIT, SIMILARITY_THRESHOLD);
   }
 
   async create(value: unknown, currentUserId?: string): Promise<TechnicalProblemRecord> {
@@ -56,6 +85,9 @@ export class TechnicalProblemService {
     const authorId = optionalText(body, 'authorId', 100) || currentUserId;
     if (!authorId) {
       throw new BadRequestException('Identificador de autor ausente.');
+    }
+    if (currentUserId && authorId !== currentUserId) {
+      throw new ForbiddenException('O autor deve ser o usuário autenticado.');
     }
     const title = requiredText(body, 'title', 160);
     const problem = requiredText(body, 'problem');
@@ -123,11 +155,17 @@ export class TechnicalProblemService {
     if (!authorId) {
       throw new BadRequestException('Identificador de autor ausente para autorização.');
     }
+    if (currentUserId && authorId !== currentUserId) {
+      throw new ForbiddenException('O autorizador deve ser o usuário autenticado.');
+    }
 
     const technicalProblem = await this.technicalProblemRepo.findById(id);
     if (!technicalProblem) throw new NotFoundException('Problema técnico não encontrado.');
 
     const needsUpdate = TechnicalProblem.validateAuthorization(technicalProblem, authorId);
+    if (currentUserId && !(await this.canReadProject(technicalProblem.projectId, currentUserId))) {
+      throw new ForbiddenException('Você não tem acesso à equipe deste problema.');
+    }
     if (!needsUpdate) {
       return technicalProblem;
     }
@@ -143,6 +181,9 @@ export class TechnicalProblemService {
     if (!technicalProblem) throw new NotFoundException('Problema técnico não encontrado.');
 
     if (currentUserId) {
+      if (!(await this.canReadProject(technicalProblem.projectId, currentUserId))) {
+        throw new ForbiddenException('Você não tem acesso à equipe deste problema.');
+      }
       const isMember = await this.technicalProblemRepo.isProjectMember(technicalProblem.projectId, currentUserId);
       if (!isMember && technicalProblem.authorId !== currentUserId) {
         throw new ForbiddenException('Você não tem permissão para registrar solução neste problema.');

@@ -19,11 +19,12 @@ export class ProjectsController {
 
   @Get()
   list(
+    @CurrentUser() user: AuthenticatedUser,
     @Query('teamId') teamId?: string,
     @Query('status') status?: string,
     @Query('userId') userId?: string,
   ) {
-    return this.projects.list({ teamId, status, userId });
+    return this.projects.list({ teamId, status, userId }, user.id);
   }
 
   @Post()
@@ -33,8 +34,8 @@ export class ProjectsController {
   }
 
   @Get(':id')
-  getById(@Param('id') id: string) {
-    return this.projects.getById(id);
+  getById(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.projects.getById(id, user.id);
   }
 
   @Get(':id/leader-view')

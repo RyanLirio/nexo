@@ -13,7 +13,7 @@ import { AuthModule } from './auth/auth.module';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from './common/auth/auth.guard';
 import { RolesGuard } from './common/auth/roles.guard';
-import { AccessControlService, PrismaAccessControlService } from './common/auth/access-control.service';
+import { AccessControlModule } from './common/auth/access-control.module';
 
 import { ConversationsModule } from './conversations/conversations.module';
 import { AiToolsModule } from './ai/tools/ai-tools.module';
@@ -21,6 +21,7 @@ import { AiToolsModule } from './ai/tools/ai-tools.module';
 @Module({
   imports: [
     AuthModule,
+    AccessControlModule,
     UsersModule,
     TeamsModule,
     ProjectsModule,
@@ -33,10 +34,6 @@ import { AiToolsModule } from './ai/tools/ai-tools.module';
   controllers: [HealthController],
   providers: [
     PrismaService,
-    {
-      provide: AccessControlService,
-      useClass: PrismaAccessControlService,
-    },
     {
       provide: APP_GUARD,
       useClass: AuthGuard,

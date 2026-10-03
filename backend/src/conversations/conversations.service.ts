@@ -5,11 +5,8 @@ import { ConversationRepository } from './conversation.repository';
 import { CheckInRepository } from '../check-ins/check-in.repository';
 import {
   SimilarTechnicalProblem,
-  TechnicalProblemRepository,
 } from '../technical-problems/technical-problem.repository';
-
-const SIMILARITY_LIMIT = 5;
-const SIMILARITY_THRESHOLD = 0.78;
+import { TechnicalProblemService } from '../technical-problems/technical-problem.service';
 
 @Injectable()
 export class ConversationsService {
@@ -20,7 +17,7 @@ export class ConversationsService {
     private readonly openAIService: OpenAIService,
     private readonly conversationRepo: ConversationRepository,
     private readonly checkInRepo: CheckInRepository,
-    private readonly technicalProblemRepo: TechnicalProblemRepository,
+    private readonly technicalProblems: TechnicalProblemService,
   ) {}
 
   private async searchSimilarProblems(userId: string, project: {
@@ -37,14 +34,9 @@ export class ConversationsService {
       throw new Error('Problema técnico identificado sem normalização.');
     }
 
-    const embedding = await this.openAIService.generateEmbedding(
+    const similarProblems = await this.technicalProblems.searchSimilarByText(
       normalizedProblem,
-    );
-    const similarProblems = await this.technicalProblemRepo.searchSimilar(
       userId,
-      embedding,
-      SIMILARITY_LIMIT,
-      SIMILARITY_THRESHOLD,
     );
 
     for (const candidate of similarProblems) {

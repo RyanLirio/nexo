@@ -16,6 +16,19 @@ export const AI_TOOL_DEFINITIONS: FunctionToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'search_similar_technical_problems',
+      description: 'Procura soluções compartilhadas e autorizadas de um problema técnico concreto por similaridade semântica. Não usar para dificuldade genérica. Não exige conhecer o projeto de origem: pesquisa entre projetos das equipes acessíveis ao usuário (ADMIN global).',
+      parameters: {
+        type: 'object',
+        properties: { problem: { type: 'string', description: 'Problema técnico concreto, preservando sintoma, tecnologia, sistema e causa conhecida.' } },
+        required: ['problem'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_user_projects',
       description: 'Retorna a lista de projetos ativos em que o desenvolvedor participa como líder ou membro.',
       parameters: {

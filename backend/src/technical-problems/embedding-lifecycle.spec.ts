@@ -5,6 +5,7 @@ import { Logger } from '@nestjs/common';
 import { OpenAIService } from '../ai/openai.service';
 import { TechnicalProblemService } from './technical-problem.service';
 import { TechnicalProblemRepository } from './technical-problem.repository';
+import { AccessControlService } from '../common/auth/access-control.service';
 
 function harness(options: { present?: boolean; fail?: boolean } = {}) {
   let present = options.present ?? false;
@@ -38,7 +39,8 @@ function harness(options: { present?: boolean; fail?: boolean } = {}) {
       return Array(1536).fill(0.01);
     },
   } as unknown as OpenAIService;
-  const service = new TechnicalProblemService(repo, ai);
+  const access = { isAdmin: async () => true } as unknown as AccessControlService;
+  const service = new TechnicalProblemService(repo, ai, access);
   const logger = { warn: (message: string) => warnings.push(message) } as unknown as Logger;
   Object.assign(service, { logger });
   return { service, record, inputs, savedIds, warnings, events, stored: () => stored };

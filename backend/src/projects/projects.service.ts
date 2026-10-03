@@ -1,30 +1,43 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ProjectMemberRecord, ProjectRecord, ProjectRepository } from './project.repository';
 import { Project } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
+import { AccessControlService } from '../common/auth/access-control.service';
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly projectRepo: ProjectRepository) {}
+  constructor(
+    private readonly projectRepo: ProjectRepository,
+    private readonly accessControl: AccessControlService,
+  ) {}
 
-  async getById(id: string): Promise<any> {
+  private async loadProject(id: string): Promise<any> {
     const project = await this.projectRepo.findById(id);
     if (!project) throw new NotFoundException('Projeto não encontrado.');
     return project;
   }
 
-  async list(filter?: { teamId?: string; status?: string; userId?: string }): Promise<any[]> {
-    return this.projectRepo.list(filter);
+  async getById(id: string, userId: string): Promise<any> {
+    if (!(await this.isMember(id, userId))) {
+      throw new ForbiddenException('Você não tem acesso à equipe deste projeto.');
+    }
+    return this.loadProject(id);
+  }
+
+  async list(filter: { teamId?: string; status?: string; userId?: string } | undefined, userId: string): Promise<any[]> {
+    if (!userId?.trim()) throw new UnauthorizedException('Usuário não identificado.');
+    return this.projectRepo.list({
+      ...filter,
+      ...((await this.accessControl.isAdmin(userId)) ? {} : { viewerId: userId }),
+    });
   }
 
   async isMember(projectId: string, userId: string): Promise<boolean> {
+    if (!userId?.trim()) return false;
+    if (await this.accessControl.isAdmin(userId)) return true;
     const project = await this.projectRepo.findById(projectId);
     if (!project) return false;
-    if (project.leaderId === userId) return true;
-    const member = await this.projectRepo.findMember(projectId, userId);
-    if (member) return true;
-    const teamMember = await this.projectRepo.findTeamMember(project.teamId, userId);
-    return !!teamMember;
+    return this.accessControl.isTeamMember(userId, project.teamId);
   }
 
   async getLeaderView(id: string, currentUserId: string): Promise<any> {
@@ -32,7 +45,7 @@ export class ProjectsService {
     if (!isMember) {
       throw new ForbiddenException('Você não tem permissão para acessar a visão do líder deste projeto.');
     }
-    const project = await this.getById(id);
+    const project = await this.getById(id, currentUserId);
     return {
       id: project.id,
       name: project.name,
@@ -50,7 +63,7 @@ export class ProjectsService {
   }
 
   async update(id: string, value: unknown, currentUserId: string): Promise<ProjectRecord> {
-    const project = await this.getById(id);
+    const project = await this.loadProject(id);
     const body = fields(value);
 
     const isLeader = project.leaderId === currentUserId;
@@ -127,7 +140,7 @@ export class ProjectsService {
   }
 
   async changeStatus(id: string, value: unknown, currentUserId: string): Promise<ProjectRecord> {
-    const project = await this.getById(id);
+    const project = await this.loadProject(id);
     const body = fields(value);
     const newStatus = Project.validateStatus(requiredText(body, 'status', 50));
     const reason = optionalText(body, 'reason');
@@ -136,12 +149,12 @@ export class ProjectsService {
   }
 
   async listMembers(projectId: string): Promise<ProjectMemberRecord[]> {
-    await this.getById(projectId);
+    await this.loadProject(projectId);
     return this.projectRepo.listMembers(projectId);
   }
 
   async addMember(projectId: string, value: unknown): Promise<ProjectMemberRecord> {
-    await this.getById(projectId);
+    await this.loadProject(projectId);
     const body = fields(value);
     const userId = requiredText(body, 'userId', 100);
     const role = Project.validateMemberRole(optionalText(body, 'role', 20) || undefined);
@@ -150,7 +163,7 @@ export class ProjectsService {
   }
 
   async removeMember(projectId: string, userId: string): Promise<void> {
-    await this.getById(projectId);
+    await this.loadProject(projectId);
     const member = await this.projectRepo.findMember(projectId, userId);
     if (!member) {
       throw new NotFoundException('Membro não encontrado neste projeto.');

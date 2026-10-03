@@ -14,8 +14,23 @@ export interface TechnicalProblemRecord {
   createdAt: Date;
   updatedAt: Date;
   author?: { id: string; name: string };
-  project?: { id: string; name: string };
+  project?: { id: string; name: string; teamId: string };
 }
+
+export interface TechnicalProblemFilter {
+  status?: string;
+  technology?: string;
+  onlyAuthorized?: boolean;
+}
+
+export interface KnowledgeViewer {
+  userId: string;
+  isAdmin: boolean;
+}
+
+export type SharedTechnicalProblem = Pick<TechnicalProblemRecord,
+  'id' | 'projectId' | 'title' | 'problem' | 'technology' | 'solution' |
+  'sharingAuthorizedAt' | 'createdAt' | 'author'>;
 
 export interface SimilarTechnicalProblem {
   id: string;
@@ -29,11 +44,13 @@ export interface SimilarTechnicalProblem {
 
 export abstract class TechnicalProblemRepository {
   abstract list(
-    query?: string,
-    projectId?: string,
-    filter?: { status?: string; technology?: string },
-  ): Promise<any[]>;
-  abstract findById(id: string): Promise<any | null>;
+    query: string | undefined,
+    projectId: string | undefined,
+    filter: TechnicalProblemFilter | undefined,
+    viewer: KnowledgeViewer,
+  ): Promise<SharedTechnicalProblem[]>;
+  abstract findById(id: string): Promise<TechnicalProblemRecord | null>;
+  abstract findProjectTeamId(projectId: string): Promise<string | null>;
 
   abstract create(data: {
     projectId: string;

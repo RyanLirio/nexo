@@ -28,7 +28,7 @@ export interface ProjectMemberRecord {
 
 export abstract class ProjectRepository {
   abstract findById(id: string): Promise<any | null>;
-  abstract list(filter?: { teamId?: string; status?: string; userId?: string }): Promise<any[]>;
+  abstract list(filter?: { teamId?: string; status?: string; userId?: string; viewerId?: string }): Promise<any[]>;
   abstract create(data: {
     teamId: string;
     name: string;

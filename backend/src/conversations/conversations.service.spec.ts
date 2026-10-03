@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { OpenAIService } from '../ai/openai.service';
+import { TechnicalProblemService } from '../technical-problems/technical-problem.service';
+import { AccessControlService } from '../common/auth/access-control.service';
 import {
   CheckInRecord,
   CheckInRepository,
@@ -185,7 +187,7 @@ function createHarness(options: {
       openAIService,
       conversationRepo,
       checkInRepo,
-      technicalProblemRepo,
+      new TechnicalProblemService(technicalProblemRepo, openAIService, {} as AccessControlService),
     ),
     createdCheckIns,
     updatedCheckIns,

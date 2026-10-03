@@ -16,6 +16,13 @@ import { HelpRequest, HelpStatus, HELP_STATUS_TRANSITIONS } from './help-request
 import { AiToolsService } from './ai/tools/ai-tools.service';
 import { AI_TOOL_DEFINITIONS } from './ai/tools/ai-tools.definitions';
 import { OpenAIService } from './ai/openai.service';
+import { AccessControlService } from './common/auth/access-control.service';
+
+const legacyTechnicalAccess = { isAdmin: async () => true } as unknown as AccessControlService;
+const projectReadAccess = {
+  isAdmin: async () => false,
+  isTeamMember: async (userId: string) => userId !== 'user-outsider',
+} as unknown as AccessControlService;
 
 const embeddingUnavailable = {
   generateEmbedding: async () => { throw new Error('Provider unavailable in unit test'); },
@@ -62,9 +69,9 @@ test('busca de problemas técnicos exige autorização de compartilhamento', asy
       return [];
     },
   } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
-  const service = new TechnicalProblemService(repo, embeddingUnavailable);
+  const service = new TechnicalProblemService(repo, embeddingUnavailable, legacyTechnicalAccess);
 
-  await service.list('porta');
+  await service.list('porta', undefined, undefined, 'user-1');
   assert.equal(queryCaptured, 'porta');
 });
 
@@ -73,7 +80,7 @@ test('rejeita criação de problema técnico com duas origens simultâneas', asy
     projectExists: async () => true,
     isProjectMember: async () => true,
   } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
-  const service = new TechnicalProblemService(repo, embeddingUnavailable);
+  const service = new TechnicalProblemService(repo, embeddingUnavailable, legacyTechnicalAccess);
 
   await assert.rejects(
     service.create({
@@ -99,7 +106,7 @@ test('cria problema técnico mesmo sem solução', async () => {
       return { id: 'know-pending', ...data } as any;
     },
   } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
-  const service = new TechnicalProblemService(repo, embeddingUnavailable);
+  const service = new TechnicalProblemService(repo, embeddingUnavailable, legacyTechnicalAccess);
 
   await service.create({
     projectId: 'project-1',
@@ -122,7 +129,7 @@ test('continua criando problema técnico com problema e solução', async () => 
       return { id: 'know-solved', ...data } as any;
     },
   } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
-  const service = new TechnicalProblemService(repo, embeddingUnavailable);
+  const service = new TechnicalProblemService(repo, embeddingUnavailable, legacyTechnicalAccess);
 
   await service.create({
     projectId: 'project-1',
@@ -145,7 +152,7 @@ test('autorização de problema técnico preenche autorizador e timestamp juntos
       return { id, authorId, sharingAuthorizedBy: authorId, sharingAuthorizedAt: date } as any;
     },
   } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
-  const service = new TechnicalProblemService(repo, embeddingUnavailable);
+  const service = new TechnicalProblemService(repo, embeddingUnavailable, legacyTechnicalAccess);
 
   await service.authorize('know-1', { authorId: 'user-1' });
 
@@ -158,7 +165,7 @@ test('rejeita autorização de problema técnico feita por outro usuário que n�
   const repo = {
     findById: async () => ({ id: 'know-1', authorId: 'user-ryan', sharingAuthorizedAt: null }),
   } as unknown as import('./technical-problems/technical-problem.repository').TechnicalProblemRepository;
-  const service = new TechnicalProblemService(repo, embeddingUnavailable);
+  const service = new TechnicalProblemService(repo, embeddingUnavailable, legacyTechnicalAccess);
 
   await assert.rejects(
     service.authorize('know-1', { authorId: 'user-gustavo' }),
@@ -171,7 +178,7 @@ test('criação de projeto rejeita líder que não pertence ao time', async () =
     findTeam: async () => ({ id: 'team-1' }),
     findTeamMember: async () => null,
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   await assert.rejects(
     service.create({
@@ -188,7 +195,7 @@ test('criação de projeto rejeita líder com papel MEMBER no time', async () =>
     findTeam: async () => ({ id: 'team-1' }),
     findTeamMember: async () => ({ userId: 'user-member', role: 'MEMBER' }),
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   await assert.rejects(
     service.create({
@@ -214,7 +221,7 @@ test('criação de projeto aceita líder com papel LEADER e cadastra responsáve
       return { id: 'proj-123', ...data };
     },
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   const result = await service.create({
     teamId: 'team-1',
@@ -241,7 +248,7 @@ test('criação de projeto aceita líder com papel ADMIN', async () => {
     },
     create: async (data: Record<string, unknown>) => ({ id: 'proj-admin', ...data }),
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   const result = await service.create({
     teamId: 'team-1',
@@ -261,7 +268,7 @@ test('criação de projeto aceita estimatedCompletionAt e priority válidos', as
       return { id: 'proj-priority', ...data };
     },
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   const targetDate = '2026-12-31T23:59:59.000Z';
   const result = await service.create({
@@ -286,7 +293,7 @@ test('criação de projeto com campos de estimativa e prioridade omitidos persis
       return { id: 'proj-sem-prioridade', ...data };
     },
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   await service.create({
     teamId: 'team-1',
@@ -301,7 +308,7 @@ test('criação de projeto rejeita prioridade fora do intervalo 0 a 100', async 
   const repo = {
     findTeam: async () => ({ id: 'team-1' }),
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   await assert.rejects(
     service.create({
@@ -326,7 +333,7 @@ test('criação de projeto rejeita data de estimativa inválida', async () => {
   const repo = {
     findTeam: async () => ({ id: 'team-1' }),
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   await assert.rejects(
     service.create({
@@ -354,7 +361,7 @@ test('atualização de projeto permite que líder atualize estimativa e priorida
       return { id, ...data };
     },
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   const targetDate = '2026-11-30T10:00:00.000Z';
   const updated = await service.update('proj-1', {
@@ -387,7 +394,7 @@ test('atualização de projeto permite que desenvolvedor membro da equipe atuali
       return { id, ...data };
     },
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   await service.update('proj-1', {
     priority: 40,
@@ -409,7 +416,7 @@ test('atualização de projeto rejeita usuário sem vínculo com equipe ou lider
     findTeamMember: async () => null,
     findMember: async () => null,
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   await assert.rejects(
     service.update('proj-1', { priority: 50 }, 'user-estranho'),
@@ -426,7 +433,7 @@ test('atualização de projeto rejeita prioridade fora de [0, 100]', async () =>
       status: 'ACTIVE',
     }),
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   await assert.rejects(
     service.update('proj-1', { priority: 120 }, 'user-leader'),
@@ -446,7 +453,7 @@ test('alteração de status de projeto grava auditoria e valida status válidos'
       return { id, status: newStatus };
     },
   } as unknown as import('./projects/project.repository').ProjectRepository;
-  const service = new ProjectsService(repo);
+  const service = new ProjectsService(repo, projectReadAccess);
 
   const updated = await service.changeStatus('proj-1', { status: 'COMPLETED', reason: 'Entrega finalizada' }, 'user-author');
   assert.equal(updated.status, 'COMPLETED');
@@ -763,8 +770,8 @@ test('HelpRequest.validateTransition valida transições de ciclo de vida', () =
 });
 
 // --- AiToolsService & Dispatcher ---
-test('AiToolsService exporta o catálogo de definições com 6 tools', () => {
-  assert.equal(AI_TOOL_DEFINITIONS.length, 6);
+test('AiToolsService exporta o catálogo de definições com 7 tools', () => {
+  assert.equal(AI_TOOL_DEFINITIONS.length, 7);
   const toolNames = AI_TOOL_DEFINITIONS.map((t) => t.function.name);
   assert.deepEqual(toolNames.sort(), [
     'get_project_context',
@@ -773,6 +780,7 @@ test('AiToolsService exporta o catálogo de definições com 6 tools', () => {
     'manage_technical_problem',
     'save_checkin',
     'search_knowledge_base',
+    'search_similar_technical_problems',
   ].sort());
 });
 
@@ -1026,7 +1034,7 @@ test('ProjectsService.getLeaderView retorna dados consolidados quando usuário �
     findMember: async () => null,
     findTeamMember: async () => null,
   };
-  const service = new ProjectsService(mockRepo as any);
+  const service = new ProjectsService(mockRepo as any, projectReadAccess);
   const view = await service.getLeaderView('p-beta', 'leader-1');
   assert.equal(view.id, 'p-beta');
   assert.equal(view.priority, 50);
@@ -1045,7 +1053,7 @@ test('ProjectsService.getLeaderView rejeita usuário não membro com ForbiddenEx
     findMember: async () => null,
     findTeamMember: async () => null,
   };
-  const service = new ProjectsService(mockRepo as any);
+  const service = new ProjectsService(mockRepo as any, projectReadAccess);
   await assert.rejects(
     service.getLeaderView('p-beta', 'user-outsider'),
     ForbiddenException,
@@ -1078,14 +1086,14 @@ test('TechnicalProblemService.updateSolution atualiza solução para membro auto
       return { id, solution } as any;
     },
   };
-  const service = new TechnicalProblemService(mockRepo as any, embeddingUnavailable);
+  const service = new TechnicalProblemService(mockRepo as any, embeddingUnavailable, legacyTechnicalAccess);
   const res = await service.updateSolution('tp-1', 'Corrigido com retry', 'u-1');
   assert.equal(updatedSolution, 'Corrigido com retry');
   assert.equal(res.solution, 'Corrigido com retry');
 });
 
 test('TechnicalProblemService.updateSolution rejeita solução vazia com BadRequestException', async () => {
-  const service = new TechnicalProblemService({} as any, embeddingUnavailable);
+  const service = new TechnicalProblemService({} as any, embeddingUnavailable, legacyTechnicalAccess);
   await assert.rejects(
     service.updateSolution('tp-1', '   ', 'u-1'),
     BadRequestException,

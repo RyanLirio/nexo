@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { Prisma } from '../generated/prisma/client';
 import {
+  KnowledgeViewer,
+  SharedTechnicalProblem,
   SimilarTechnicalProblem,
+  TechnicalProblemFilter,
   TechnicalProblemRecord,
   TechnicalProblemRepository,
 } from './technical-problem.repository';
@@ -17,12 +21,15 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
   }
 
   async list(
-    query?: string,
-    projectId?: string,
-    filter?: { status?: string; technology?: string; onlyAuthorized?: boolean },
-  ): Promise<any[]> {
+    query: string | undefined,
+    projectId: string | undefined,
+    filter: TechnicalProblemFilter | undefined,
+    viewer: KnowledgeViewer,
+  ): Promise<SharedTechnicalProblem[]> {
     const term = query?.trim();
-    const where: Record<string, unknown> = {};
+    const where: Prisma.TechnicalProblemWhereInput = viewer.isAdmin
+      ? {}
+      : { project: { team: { members: { some: { userId: viewer.userId } } } } };
 
     if (filter?.onlyAuthorized !== false) {
       where.sharingAuthorizedAt = { not: null };
@@ -67,12 +74,12 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
   }
 
 
-  async findById(id: string): Promise<any | null> {
+  async findById(id: string): Promise<TechnicalProblemRecord | null> {
     return this.prisma.technicalProblem.findUnique({
       where: { id },
       include: {
         author: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true, teamId: true } },
       },
     });
   }
@@ -117,6 +124,13 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
       select: { id: true },
     });
     return !!project;
+  }
+
+  async findProjectTeamId(projectId: string): Promise<string | null> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId }, select: { teamId: true },
+    });
+    return project?.teamId ?? null;
   }
 
   async isProjectMember(projectId: string, userId: string): Promise<boolean> {

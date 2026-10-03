@@ -137,8 +137,18 @@ Para DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
       ${technicalClassificationInstructions}
       - Para classification, considere somente as informações da mensagem atual que pertencem ao projeto avaliado.
       - Não use informações de outro projeto nem o contexto anterior para determinar classification.
-      - Quando classification for TECHNICAL_PROBLEM, normalizedProblem deve ser uma frase técnica natural formada por sintoma ou problema, causa somente se conhecida, tecnologia e contexto relevante.
-      - Nunca invente causa ou detalhes em normalizedProblem.
+      - Quando classification for TECHNICAL_PROBLEM, normalizedProblem deve preservar fielmente o significado técnico da mensagem em uma frase natural.
+      - Escreva normalizedProblem como uma descrição técnica útil para recuperação semântica, não como um resumo genérico do relato.
+      - Preserve, quando presentes, o sintoma técnico, a tecnologia, o componente ou sistema afetado, a causa conhecida e o contexto necessário para distinguir o problema.
+      - Mantenha termos técnicos importantes citados pelo usuário; não os substitua por descrições genéricas nem os omita.
+      - Prefira uma estrutura direta que conecte componente técnico, sintoma e momento ou sistema afetado. Ao reformular uma relação causal, preserve os dois lados da relação e seus qualificadores técnicos.
+      - Quando a mensagem informar uma causa técnica concreta para um efeito mais genérico, use a causa técnica como núcleo de normalizedProblem e preserve o efeito como consequência quando ele for relevante.
+      - normalizedProblem deve ser autocontido: resolva referências abreviadas pelo papel técnico que a própria mensagem estabelecer de forma inequívoca.
+      - Converta linguagem conversacional em terminologia técnica estável quando o significado for equivalente, sem acrescentar protocolo, fornecedor, componente ou causa que não estejam sustentados pela mensagem.
+      - Se o significado de uma referência abreviada continuar ambíguo, mantenha a referência original sem adivinhar.
+      - projectId já representa a associação ao projeto. Não inclua o nome do projeto em normalizedProblem; descreva diretamente o evento técnico, o componente e o sistema afetado informados na mensagem.
+      - Não transforme um problema específico em um resumo genérico e não use contexto de negócio como substituto do contexto técnico.
+      - Nunca invente causa ou detalhes em normalizedProblem e não adicione solução.
       - Quando classification for DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
       - Cada campo deve conter somente o contexto referente àquele projeto.
       - Não misture informações de projetos diferentes no mesmo summary.

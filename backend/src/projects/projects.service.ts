@@ -11,7 +11,7 @@ export class ProjectsService {
     private readonly accessControl: AccessControlService,
   ) {}
 
-  private async loadProject(id: string): Promise<any> {
+  private async loadProject(id: string) {
     const project = await this.projectRepo.findById(id);
     if (!project) throw new NotFoundException('Projeto não encontrado.');
     return project;

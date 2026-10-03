@@ -105,7 +105,7 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
         sourceCheckInId: data.sourceCheckInId,
         sourceHelpRequestId: data.sourceHelpRequestId,
       },
-    }) as unknown as TechnicalProblemRecord;
+    });
   }
 
   async authorize(id: string, authorId: string, authorizedAt: Date): Promise<TechnicalProblemRecord> {
@@ -115,7 +115,7 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
         sharingAuthorizedBy: authorId,
         sharingAuthorizedAt: authorizedAt,
       },
-    }) as unknown as TechnicalProblemRecord;
+    });
   }
 
   async projectExists(projectId: string): Promise<boolean> {
@@ -161,7 +161,7 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
     return this.prisma.technicalProblem.update({
       where: { id },
       data: { solution },
-    }) as unknown as TechnicalProblemRecord;
+    });
   }
 
   async searchSimilar(

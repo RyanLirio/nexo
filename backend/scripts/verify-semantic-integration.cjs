@@ -254,7 +254,18 @@ async function verifyHttp(app, knownId) {
   assert.equal(multiple.body.assistantMessage.content, 'Tenho soluções sugeridas para mais de um projeto. Para qual projeto você quer ver a solução?');
   assert.ok(!multiple.body.acceptedSolution && !JSON.stringify(multiple.body).includes(solution));
   assert.equal((await conversations.findPendingSuggestions(ids.member, response.body.conversationId)).length, 2);
-  console.log('Fase 4 real: PENDING, ASSISTANT, aceite, recusa, outro usuário, acesso/consentimento/solução revalidados e múltiplos projetos: OK.');
+  stage = 'Fase 4 / seleção de uma entre múltiplas pendências';
+  const selected = await request('/api/v1/conversations/message', ids.member, { message: 'Automação Financeira' });
+  assert.equal(selected.status, 201);
+  assert.equal(selected.body.acceptedSolution.projectId, ids.finance);
+  assert.equal(selected.body.acceptedSolution.solution, solution);
+  assert.equal(selected.body.assistantMessage.content, solution);
+  const remaining = await conversations.findPendingSuggestions(ids.member, response.body.conversationId);
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].projectId, ids.knowledge);
+  assert.equal(remaining[0].status, 'PENDING');
+  assert.equal((await prisma.message.findUnique({ where: { id: selected.body.assistantMessage.id } })).role, 'ASSISTANT');
+  console.log('Fase 4 real: PENDING, ASSISTANT, aceite, recusa, outro usuário, acesso/consentimento/solução revalidados e seleção entre múltiplos projetos: OK.');
   return response.body;
 }
 

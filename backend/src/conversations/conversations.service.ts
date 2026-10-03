@@ -5,7 +5,7 @@ import { ConversationRepository, MessageRecord, PendingSolutionSuggestionRecord 
 import { CheckInRepository } from '../check-ins/check-in.repository';
 import { SimilarTechnicalProblem, TechnicalProblemRecord } from '../technical-problems/technical-problem.repository';
 import { TechnicalProblemService } from '../technical-problems/technical-problem.service';
-import { parseSolutionReply } from './solution-reply';
+import { findPendingProjectSelection, isStandaloneSolutionReply, parseSolutionReply } from './solution-reply';
 
 export interface SolutionSuggestion {
   available: true;
@@ -136,16 +136,46 @@ export class ConversationsService {
     userId: string,
     conversationId: string,
     messageId: string,
-    decision: 'ACCEPTED' | 'DECLINED',
+    message: string,
   ): Promise<ConversationResponse | null> {
     const pending = (await this.conversationRepo.findPendingSuggestions(userId, conversationId))
       .filter((suggestion) => suggestion.userId === userId
         && suggestion.conversationId === conversationId && suggestion.status === 'PENDING');
     if (pending.length === 0) return null;
-    if (pending.length > 1) {
-      return this.respond(conversationId, messageId, 'Tenho soluções sugeridas para mais de um projeto. Para qual projeto você quer ver a solução?');
+
+    const explicitDecision = parseSolutionReply(message);
+    const selection = findPendingProjectSelection(message, pending.map((item) => ({
+      projectId: item.projectId,
+      projectName: item.projectName,
+    })));
+    let decision = explicitDecision;
+    let suggestion: PendingSolutionSuggestionRecord;
+
+    if (pending.length === 1) {
+      if (!decision) return null;
+      if (!isStandaloneSolutionReply(message) && selection.matches.length !== 1) {
+        return this.respond(
+          conversationId,
+          messageId,
+          `Não consegui identificar qual projeto. A opção é: ${pending[0].projectName}.`,
+        );
+      }
+      suggestion = pending[0];
+    } else {
+      if (selection.matches.length === 1 && (decision || selection.isSelectionOnly)) {
+        suggestion = pending.find((item) => item.projectId === selection.matches[0].projectId)!;
+        decision ??= 'ACCEPTED';
+      } else {
+        const options = pending.map((item) => item.projectName).join(' e ');
+        const initialQuestion = explicitDecision && selection.matches.length === 0
+          && isStandaloneSolutionReply(message);
+        const content = initialQuestion
+          ? 'Tenho soluções sugeridas para mais de um projeto. Para qual projeto você quer ver a solução?'
+          : `Não consegui identificar qual projeto. As opções são: ${options}.`;
+        return this.respond(conversationId, messageId, content);
+      }
     }
-    const suggestion = pending[0];
+
     if (decision === 'DECLINED') {
       return this.finishSuggestion(suggestion, messageId, 'DECLINED', 'Sem problema. Seguimos por aqui.');
     }
@@ -201,11 +231,8 @@ export class ConversationsService {
       content: message,
     });
 
-    const decision = parseSolutionReply(message);
-    if (decision) {
-      const response = await this.answerPending(userId, conversation.id, savedMessage.id, decision);
-      if (response) return response;
-    }
+    const pendingResponse = await this.answerPending(userId, conversation.id, savedMessage.id, message);
+    if (pendingResponse) return pendingResponse;
 
     const activeProjects = await this.projectRepo.list({
       userId,

@@ -6,6 +6,7 @@ import {
   MessageRecord,
   PendingSolutionSuggestionInput,
   PendingSolutionSuggestionRecord,
+  PendingSolutionSuggestionWithProject,
 } from './conversation.repository';
 
 @Injectable()
@@ -101,11 +102,16 @@ export class PrismaConversationRepository extends ConversationRepository {
     });
   }
 
-  async findPendingSuggestions(userId: string, conversationId: string): Promise<PendingSolutionSuggestionRecord[]> {
-    return this.prisma.pendingTechnicalSolutionSuggestion.findMany({
+  async findPendingSuggestions(userId: string, conversationId: string): Promise<PendingSolutionSuggestionWithProject[]> {
+    const suggestions = await this.prisma.pendingTechnicalSolutionSuggestion.findMany({
       where: { userId, conversationId, status: 'PENDING', conversation: { userId } },
       orderBy: { createdAt: 'asc' },
+      include: { project: { select: { name: true } } },
     });
+    return suggestions.map(({ project, ...suggestion }) => ({
+      ...suggestion,
+      projectName: project.name,
+    }));
   }
 
   async completeSuggestion(

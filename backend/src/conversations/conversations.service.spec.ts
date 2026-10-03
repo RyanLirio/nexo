@@ -164,7 +164,11 @@ function createHarness(options: {
       return saved;
     },
     findPendingSuggestions: async (userId: string, conversationId: string) => [...pendingSuggestions.values()]
-      .filter((row) => row.userId === userId && row.conversationId === conversationId && row.status === 'PENDING'),
+      .filter((row) => row.userId === userId && row.conversationId === conversationId && row.status === 'PENDING')
+      .map((row) => ({
+        ...row,
+        projectName: options.projects.find((project) => project.id === row.projectId)?.name ?? row.projectId,
+      })),
     completeSuggestion: async (snapshot: PendingSolutionSuggestionRecord, status: 'ACCEPTED' | 'DECLINED', content: string) => {
       const current = pendingSuggestions.get(snapshot.id);
       if (!current || current.status !== 'PENDING' || current.updatedAt.getTime() !== snapshot.updatedAt.getTime()) return null;
@@ -718,6 +722,115 @@ test('duas pendências e "sim" pedem o projeto, sem escolher candidato', async (
   assert.ok([...harness.pendingSuggestions.values()].every((row) => row.status === 'PENDING'));
   assert.equal(harness.knowledgeReads.length, 0);
   assert.equal(harness.extractionCallCount(), 1);
+  assertNoSolution(response);
+});
+
+function multipleSuggestionsHarness(projects: TestProject[] = [
+  { id: 'finance', name: 'Automação Financeira' },
+  { id: 'portal', name: 'Portal de Notas' },
+]) {
+  return createHarness({
+    projects,
+    similarProblems: [knownCandidate],
+    extractions: [[
+      { ...technicalContext, projectId: projects[0].id },
+      { ...technicalContext, projectId: projects[1].id },
+    ], []],
+  });
+}
+
+for (const reply of ['Automação Financeira', 'a da Automação Financeira']) {
+  test(`seleção única por projeto aceita a sugestão correta: "${reply}"`, async () => {
+    const harness = multipleSuggestionsHarness();
+    await harness.service.separateMessageByProject('user-1', 'Falha técnica nos dois projetos.');
+    await harness.service.separateMessageByProject('user-1', 'sim');
+    const response = await harness.service.separateMessageByProject('user-1', reply);
+    const suggestions = [...harness.pendingSuggestions.values()];
+    assert.equal(response.acceptedSolution?.projectId, 'finance');
+    assert.equal(suggestions.find((row) => row.projectId === 'finance')?.status, 'ACCEPTED');
+    assert.equal(suggestions.find((row) => row.projectId === 'portal')?.status, 'PENDING');
+    assert.equal(response.assistantMessage.content, knownSolution);
+    assert.equal(harness.savedMessages.at(-1)?.role, 'ASSISTANT');
+  });
+}
+
+test('aceite com nome do projeto resolve em uma única mensagem', async () => {
+  const harness = multipleSuggestionsHarness();
+  await harness.service.separateMessageByProject('user-1', 'Falha técnica nos dois projetos.');
+  const response = await harness.service.separateMessageByProject('user-1', 'sim, mostra a do Portal de Notas');
+  const suggestions = [...harness.pendingSuggestions.values()];
+  assert.equal(response.acceptedSolution?.projectId, 'portal');
+  assert.equal(suggestions.find((row) => row.projectId === 'portal')?.status, 'ACCEPTED');
+  assert.equal(suggestions.find((row) => row.projectId === 'finance')?.status, 'PENDING');
+});
+
+for (const [reply, projectId] of [
+  ['dispensa a do Portal', 'portal'],
+  ['não quero a da Automação Financeira', 'finance'],
+  ['não precisa mostrar a do Portal de Notas', 'portal'],
+] as const) {
+  test(`recusa com projeto afeta somente o contexto identificado: "${reply}"`, async () => {
+    const harness = multipleSuggestionsHarness();
+    await harness.service.separateMessageByProject('user-1', 'Falha técnica nos dois projetos.');
+    const response = await harness.service.separateMessageByProject('user-1', reply);
+    const suggestions = [...harness.pendingSuggestions.values()];
+    assert.equal(suggestions.find((row) => row.projectId === projectId)?.status, 'DECLINED');
+    assert.equal(suggestions.find((row) => row.projectId !== projectId)?.status, 'PENDING');
+    assert.equal(response.assistantMessage.content, 'Sem problema. Seguimos por aqui.');
+    assertNoSolution(response);
+  });
+}
+
+test('projeto desconhecido não escolhe pendência e lista opções sem vazar solução', async () => {
+  const harness = multipleSuggestionsHarness();
+  await harness.service.separateMessageByProject('user-1', 'Falha técnica nos dois projetos.');
+  const response = await harness.service.separateMessageByProject('user-1', 'CRM');
+  assert.match(response.assistantMessage.content, /Automação Financeira e Portal de Notas/);
+  assert.ok([...harness.pendingSuggestions.values()].every((row) => row.status === 'PENDING'));
+  assert.equal(harness.savedMessages.at(-1)?.role, 'ASSISTANT');
+  assertNoSolution(response);
+});
+
+test('nome parcial comum a dois projetos permanece ambíguo', async () => {
+  const harness = multipleSuggestionsHarness([
+    { id: 'portal-notas', name: 'Portal de Notas' },
+    { id: 'portal-financeiro', name: 'Portal Financeiro' },
+  ]);
+  await harness.service.separateMessageByProject('user-1', 'Falha técnica nos dois projetos.');
+  const response = await harness.service.separateMessageByProject('user-1', 'Portal');
+  assert.match(response.assistantMessage.content, /Não consegui identificar qual projeto/);
+  assert.ok([...harness.pendingSuggestions.values()].every((row) => row.status === 'PENDING'));
+  assertNoSolution(response);
+});
+
+test('nome de projeto sem pendência não redireciona aceite para a única pendência', async () => {
+  const harness = solutionHarness();
+  await harness.service.separateMessageByProject('user-1', knownCandidate.problem);
+  const response = await harness.service.separateMessageByProject('user-1', 'quero a do Portal de Notas');
+  assert.equal([...harness.pendingSuggestions.values()][0].status, 'PENDING');
+  assert.match(response.assistantMessage.content, /A opção é: Financeiro/);
+  assert.equal(harness.knowledgeReads.length, 0);
+  assertNoSolution(response);
+});
+
+test('seleção por projeto continua revalidando acesso antes de revelar', async () => {
+  const harness = multipleSuggestionsHarness();
+  await harness.service.separateMessageByProject('user-1', 'Falha técnica nos dois projetos.');
+  harness.setKnowledgeAccess(false);
+  const response = await harness.service.separateMessageByProject('user-1', 'quero a solução da Automação Financeira');
+  const suggestions = [...harness.pendingSuggestions.values()];
+  assert.equal(suggestions.find((row) => row.projectId === 'finance')?.status, 'DECLINED');
+  assert.equal(suggestions.find((row) => row.projectId === 'portal')?.status, 'PENDING');
+  assert.equal(response.assistantMessage.content, 'Essa solução não está mais disponível para você.');
+  assertNoSolution(response);
+});
+
+test('usuário não seleciona por nome pendência de outro usuário', async () => {
+  const harness = multipleSuggestionsHarness();
+  await harness.service.separateMessageByProject('user-1', 'Falha técnica nos dois projetos.');
+  const response = await harness.service.separateMessageByProject('user-2', 'sim, mostra a da Automação Financeira');
+  assert.ok([...harness.pendingSuggestions.values()].every((row) => row.status === 'PENDING'));
+  assert.equal(harness.knowledgeReads.length, 0);
   assertNoSolution(response);
 });
 

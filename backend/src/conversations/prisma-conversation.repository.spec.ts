@@ -26,13 +26,15 @@ test('repository persiste role ASSISTANT e preserva default USER nas chamadas an
 test('repository localiza apenas PENDING do usuário e da conversa pertencente a ele', async () => {
   let captured: unknown;
   const repository = new PrismaConversationRepository({ pendingTechnicalSolutionSuggestion: {
-    findMany: async (args: unknown) => { captured = args; return []; },
+    findMany: async (args: unknown) => { captured = args; return [{ ...snapshot, project: { name: 'Automação Financeira' } }]; },
   } } as unknown as PrismaService);
-  await repository.findPendingSuggestions('user-1', 'conversation-1');
+  const result = await repository.findPendingSuggestions('user-1', 'conversation-1');
   assert.deepEqual(captured, {
     where: { userId: 'user-1', conversationId: 'conversation-1', status: 'PENDING', conversation: { userId: 'user-1' } },
     orderBy: { createdAt: 'asc' },
+    include: { project: { select: { name: true } } },
   });
+  assert.deepEqual(result, [{ ...snapshot, projectName: 'Automação Financeira' }]);
 });
 
 test('repository substitui sugestão no slot user + conversation + project, sem copiar solução', async () => {

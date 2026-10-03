@@ -29,6 +29,10 @@ export interface PendingSolutionSuggestionRecord {
 export type PendingSolutionSuggestionInput = Pick<PendingSolutionSuggestionRecord,
   'conversationId' | 'userId' | 'projectId' | 'technicalProblemId' | 'similarity'>;
 
+export interface PendingSolutionSuggestionWithProject extends PendingSolutionSuggestionRecord {
+  projectName: string;
+}
+
 export abstract class ConversationRepository {
   abstract findDailyConversation(
     userId: string,
@@ -58,7 +62,7 @@ export abstract class ConversationRepository {
   ): Promise<MessageRecord[]>;
 
   abstract savePendingSuggestion(data: PendingSolutionSuggestionInput): Promise<PendingSolutionSuggestionRecord>;
-  abstract findPendingSuggestions(userId: string, conversationId: string): Promise<PendingSolutionSuggestionRecord[]>;
+  abstract findPendingSuggestions(userId: string, conversationId: string): Promise<PendingSolutionSuggestionWithProject[]>;
   abstract completeSuggestion(
     suggestion: PendingSolutionSuggestionRecord,
     status: 'ACCEPTED' | 'DECLINED',

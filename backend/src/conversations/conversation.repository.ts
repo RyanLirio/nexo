@@ -14,6 +14,21 @@ export interface MessageRecord {
   createdAt: Date;
 }
 
+export interface PendingSolutionSuggestionRecord {
+  id: string;
+  conversationId: string;
+  userId: string;
+  projectId: string;
+  technicalProblemId: string;
+  similarity: number;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type PendingSolutionSuggestionInput = Pick<PendingSolutionSuggestionRecord,
+  'conversationId' | 'userId' | 'projectId' | 'technicalProblemId' | 'similarity'>;
+
 export abstract class ConversationRepository {
   abstract findDailyConversation(
     userId: string,
@@ -27,7 +42,8 @@ export abstract class ConversationRepository {
 
   abstract createMessage(data: {
     conversationId: string;
-    senderId: string;
+    senderId?: string | null;
+    role?: MessageRecord['role'];
     content: string;
   }): Promise<MessageRecord>;
 
@@ -40,4 +56,12 @@ export abstract class ConversationRepository {
     userId: string,
     limit?: number,
   ): Promise<MessageRecord[]>;
-}
+
+  abstract savePendingSuggestion(data: PendingSolutionSuggestionInput): Promise<PendingSolutionSuggestionRecord>;
+  abstract findPendingSuggestions(userId: string, conversationId: string): Promise<PendingSolutionSuggestionRecord[]>;
+  abstract completeSuggestion(
+    suggestion: PendingSolutionSuggestionRecord,
+    status: 'ACCEPTED' | 'DECLINED',
+    assistantContent: string,
+  ): Promise<MessageRecord | null>;
+}

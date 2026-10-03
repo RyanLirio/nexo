@@ -3,6 +3,8 @@
 Estado verificado em 03/10/2026 na branch `codex/integracao-main-fases-1-3`.
 Este documento descreve o backend atual; os documentos do kickoff são históricos.
 
+O núcleo de aceite/recusa adicionado depois deste checkpoint está em [Fase 4 — aceite de solução](fase4-aceite-solucao.md).
+
 ## Conversation e CheckIn
 
 `POST /api/v1/conversations/message`, autenticado, recebe `{ "message": "..." }`.
@@ -46,7 +48,8 @@ Resposta por projeto, quando houver candidato:
 
 Sem candidato, `solutionSuggestion` é `null`. A busca interna pode retornar `solution`,
 mas o JSON da Conversation não retorna `solution` nem `similarProblems`.
-Não existe ainda aceite, estado de solução pendente ou resposta conversacional completa.
+O aceite e a pendência foram acrescentados pela Fase 4, no documento vinculado acima;
+a resposta conversacional elaborada continua fora do escopo.
 Os endpoints da base compartilhada continuam podendo mostrar soluções autorizadas a
 usuários com acesso; a restrição acima é o contrato público da **Conversation**.
 
@@ -141,5 +144,5 @@ identifica a execução, mas não autoriza apagar outros registros em massa.
 Nenhum teste de integração substitui erro/indisponibilidade por sucesso fictício.
 
 Não há lint configurado neste backend; nenhuma ferramenta foi instalada para isso.
-Aceite da solução, UX, estado pendente, criação automática de TechnicalProblem e MCP
-dependem das próximas decisões de Ryan.
+Seleção por projeto entre várias sugestões, UX, criação automática de TechnicalProblem
+e MCP dependem das próximas decisões de Ryan. O núcleo de aceite e a pendência já estão na Fase 4.

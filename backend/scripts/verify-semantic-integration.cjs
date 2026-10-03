@@ -10,6 +10,7 @@ const { PrismaService } = require('../dist/prisma.service');
 const { TechnicalProblemService } = require('../dist/technical-problems/technical-problem.service');
 const { TechnicalProblemRepository } = require('../dist/technical-problems/technical-problem.repository');
 const { AiToolsService } = require('../dist/ai/tools/ai-tools.service');
+const { ConversationRepository } = require('../dist/conversations/conversation.repository');
 
 const runId = `semantic-test-${randomUUID()}`;
 const ids = {
@@ -138,6 +139,8 @@ function assertSharedMatches(results, knownId, allowForeign = false) {
 }
 
 async function verifyHttp(app, knownId) {
+  const prisma = app.get(PrismaService);
+  const conversations = app.get(ConversationRepository);
   const baseUrl = await app.getUrl();
   async function request(path, userId, body) {
     const token = userId ? jwt.sign({ sub: userId }, process.env.JWT_SECRET, { expiresIn: '5m' }) : undefined;
@@ -182,6 +185,76 @@ async function verifyHttp(app, knownId) {
   const json = JSON.stringify(response.body);
   assert.ok(!json.includes('"solution"') && !json.includes('similarProblems') && !json.includes(solution), 'Solução vazou no contrato externo.');
   console.log(`Conversation: classification=${context.classification}; normalizedProblem=${context.normalizedProblem}; similarity=${context.solutionSuggestion.similarity.toFixed(6)}; solução ausente do JSON.`);
+  stage = 'Fase 4 / pendência / aceite / recusa / revalidação real';
+  const pendingInput = {
+    userId: ids.member, conversationId: response.body.conversationId, projectId: ids.finance,
+    technicalProblemId: knownId, similarity: context.solutionSuggestion.similarity,
+  };
+  const pending = await conversations.findPendingSuggestions(ids.member, response.body.conversationId);
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].status, 'PENDING');
+  assert.equal(pending[0].technicalProblemId, knownId);
+  assert.ok(!('solution' in pending[0]) && !('problemEmbedding' in pending[0]));
+  stage = 'Fase 4 / Message ASSISTANT da pergunta';
+  const question = await prisma.message.findUnique({ where: { id: response.body.assistantMessage.id } });
+  assert.equal(question.role, 'ASSISTANT');
+  assert.equal(question.content, 'Encontrei um problema parecido. Quer ver a solução?');
+
+  stage = 'Fase 4 / resposta de outro usuário';
+  const foreignReply = await request('/api/v1/conversations/message', ids.outsider, { message: 'sim' });
+  assert.equal(foreignReply.status, 201);
+  assert.ok(!foreignReply.body.acceptedSolution && !JSON.stringify(foreignReply.body).includes(solution));
+  assert.equal((await conversations.findPendingSuggestions(ids.member, response.body.conversationId)).length, 1);
+  stage = 'Fase 4 / aceite HTTP e status ACCEPTED';
+  const accepted = await request('/api/v1/conversations/message', ids.member, { message: 'sim, mostra' });
+  assert.equal(accepted.status, 201);
+  assert.equal(accepted.body.acceptedSolution.solution, solution);
+  assert.equal(accepted.body.acceptedSolution.technicalProblemId, knownId);
+  assert.equal(accepted.body.assistantMessage.content, solution);
+  assert.equal((await prisma.pendingTechnicalSolutionSuggestion.findUnique({ where: { id: pending[0].id } })).status, 'ACCEPTED');
+  assert.equal((await prisma.message.findUnique({ where: { id: accepted.body.assistantMessage.id } })).role, 'ASSISTANT');
+
+  stage = 'Fase 4 / nova pendência e recusa';
+  await conversations.savePendingSuggestion(pendingInput);
+  const declined = await request('/api/v1/conversations/message', ids.member, { message: 'não' });
+  assert.equal(declined.status, 201);
+  assert.equal(declined.body.assistantMessage.content, 'Sem problema. Seguimos por aqui.');
+  assert.ok(!declined.body.acceptedSolution && !JSON.stringify(declined.body).includes(solution));
+  assert.equal((await prisma.pendingTechnicalSolutionSuggestion.findUnique({ where: { id: pending[0].id } })).status, 'DECLINED');
+
+  await conversations.savePendingSuggestion(pendingInput);
+  stage = 'Fase 4 / retirada de TeamMember e revalidação';
+  await prisma.teamMember.delete({ where: { teamId_userId: { teamId: ids.team, userId: ids.member } } });
+  const lostAccess = await request('/api/v1/conversations/message', ids.member, { message: 'mostra' });
+  assert.equal(lostAccess.status, 201);
+  assert.ok(!lostAccess.body.acceptedSolution && !JSON.stringify(lostAccess.body).includes(solution));
+  await prisma.teamMember.create({ data: { teamId: ids.team, userId: ids.member } });
+
+  await conversations.savePendingSuggestion(pendingInput);
+  stage = 'Fase 4 / retirada do consentimento e revalidação';
+  await prisma.$executeRaw`UPDATE "TechnicalProblem" SET "sharingAuthorizedAt" = NULL, "sharingAuthorizedBy" = NULL WHERE id = ${knownId}`;
+  const revoked = await request('/api/v1/conversations/message', ids.member, { message: 'sim' });
+  assert.equal(revoked.status, 201);
+  assert.ok(!revoked.body.acceptedSolution && !JSON.stringify(revoked.body).includes(solution));
+  await prisma.$executeRaw`UPDATE "TechnicalProblem" SET "sharingAuthorizedAt" = CURRENT_TIMESTAMP, "sharingAuthorizedBy" = ${ids.member} WHERE id = ${knownId}`;
+
+  await conversations.savePendingSuggestion(pendingInput);
+  stage = 'Fase 4 / retirada da solução e revalidação';
+  await prisma.$executeRaw`UPDATE "TechnicalProblem" SET solution = NULL WHERE id = ${knownId}`;
+  const removed = await request('/api/v1/conversations/message', ids.member, { message: 'sim' });
+  assert.equal(removed.status, 201);
+  assert.ok(!removed.body.acceptedSolution && !JSON.stringify(removed.body).includes(solution));
+  await prisma.$executeRaw`UPDATE "TechnicalProblem" SET solution = ${solution} WHERE id = ${knownId}`;
+
+  await conversations.savePendingSuggestion(pendingInput);
+  stage = 'Fase 4 / coexistência de sugestões entre projetos';
+  await conversations.savePendingSuggestion({ ...pendingInput, projectId: ids.knowledge });
+  const multiple = await request('/api/v1/conversations/message', ids.member, { message: 'sim' });
+  assert.equal(multiple.status, 201);
+  assert.equal(multiple.body.assistantMessage.content, 'Tenho soluções sugeridas para mais de um projeto. Para qual projeto você quer ver a solução?');
+  assert.ok(!multiple.body.acceptedSolution && !JSON.stringify(multiple.body).includes(solution));
+  assert.equal((await conversations.findPendingSuggestions(ids.member, response.body.conversationId)).length, 2);
+  console.log('Fase 4 real: PENDING, ASSISTANT, aceite, recusa, outro usuário, acesso/consentimento/solução revalidados e múltiplos projetos: OK.');
   return response.body;
 }
 
@@ -271,6 +344,7 @@ async function main() {
 main().catch((error) => {
   // Não imprimir stack/provider payload: podem conter SQL, URLs ou credenciais.
   const detail = stage === 'configuração' || error.name === 'AssertionError' ? error.message : error.name;
-  console.error(`Falha na etapa "${stage}": ${detail}. Verifique PostgreSQL, migrations e acesso à OpenAI.`);
+  const code = typeof error.code === 'string' && /^P\d{4}$/.test(error.code) ? ` (${error.code})` : '';
+  console.error(`Falha na etapa "${stage}": ${detail}${code}. Verifique PostgreSQL, migrations e acesso à OpenAI.`);
   process.exitCode = 1;
 });

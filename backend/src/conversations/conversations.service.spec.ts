@@ -10,11 +10,14 @@ import {
 import { ProjectRepository } from '../projects/project.repository';
 import {
   SimilarTechnicalProblem,
+  TechnicalProblemRecord,
   TechnicalProblemRepository,
 } from '../technical-problems/technical-problem.repository';
 import {
   ConversationRepository,
   MessageRecord,
+  PendingSolutionSuggestionInput,
+  PendingSolutionSuggestionRecord,
 } from './conversation.repository';
 import { ConversationsService } from './conversations.service';
 
@@ -80,6 +83,18 @@ function createHarness(options: {
   const linkedProjects: string[] = [];
   const projectContextsSentToAi: ProjectContextInput[] = [];
   const embeddingInputs: string[] = [];
+  const savedMessages: MessageRecord[] = [];
+  const pendingSuggestions = new Map<string, PendingSolutionSuggestionRecord>();
+  const knowledgeReads: string[] = [];
+  const knowledgeRecords = new Map<string, TechnicalProblemRecord>(
+    [...(options.similarProblems ?? []), ...Object.values(options.similarProblemsByText ?? {}).flat()]
+      .map((candidate) => [candidate.id, {
+        ...candidate, authorId: candidate.author.id, title: 'Problema conhecido',
+        sharingAuthorizedAt: new Date(), createdAt: new Date(), updatedAt: new Date(),
+      }]),
+  );
+  let canReadKnowledge = true;
+  let pendingVersion = 0;
   const semanticSearches: Array<{
     userId: string;
     embedding: number[];
@@ -88,6 +103,7 @@ function createHarness(options: {
   }> = [];
   let extractionIndex = 0;
   let messageIndex = 0;
+  let assistantIndex = 0;
   let extractionCalls = 0;
 
   const projectRepo = {
@@ -114,29 +130,52 @@ function createHarness(options: {
   } as unknown as OpenAIService;
 
   const conversationRepo = {
-    findDailyConversation: async () => ({
-      id: 'conversation-1',
-      userId: 'user-1',
+    findDailyConversation: async (userId: string) => ({
+      id: userId === 'user-1' ? 'conversation-1' : 'conversation-2',
+      userId,
       createdAt: new Date(),
       updatedAt: new Date(),
     }),
-    createMessage: async (data: {
-      conversationId: string;
-      senderId: string;
-      content: string;
-    }): Promise<MessageRecord> => {
-      messageIndex += 1;
-      return {
-        id: `message-${messageIndex}`,
+    createMessage: async (data: Parameters<ConversationRepository['createMessage']>[0]): Promise<MessageRecord> => {
+      const role = data.role ?? 'USER';
+      if (role === 'USER') messageIndex += 1;
+      else assistantIndex += 1;
+      const saved = {
+        id: role === 'USER' ? `message-${messageIndex}` : `assistant-${assistantIndex}`,
         conversationId: data.conversationId,
         senderId: data.senderId,
-        role: 'USER',
+        role,
         content: data.content,
         createdAt: new Date(),
       };
+      savedMessages.push(saved);
+      return saved;
     },
     linkProject: async (_conversationId: string, projectId: string) => {
       linkedProjects.push(projectId);
+    },
+    savePendingSuggestion: async (data: PendingSolutionSuggestionInput) => {
+      const slot = `${data.userId}:${data.conversationId}:${data.projectId}`;
+      pendingVersion += 1;
+      const saved: PendingSolutionSuggestionRecord = {
+        ...data, id: slot, status: 'PENDING', createdAt: new Date(), updatedAt: new Date(pendingVersion),
+      };
+      pendingSuggestions.set(slot, saved);
+      return saved;
+    },
+    findPendingSuggestions: async (userId: string, conversationId: string) => [...pendingSuggestions.values()]
+      .filter((row) => row.userId === userId && row.conversationId === conversationId && row.status === 'PENDING'),
+    completeSuggestion: async (snapshot: PendingSolutionSuggestionRecord, status: 'ACCEPTED' | 'DECLINED', content: string) => {
+      const current = pendingSuggestions.get(snapshot.id);
+      if (!current || current.status !== 'PENDING' || current.updatedAt.getTime() !== snapshot.updatedAt.getTime()) return null;
+      pendingSuggestions.set(snapshot.id, { ...current, status });
+      assistantIndex += 1;
+      const saved: MessageRecord = {
+        id: `assistant-${assistantIndex}`, conversationId: snapshot.conversationId,
+        role: 'ASSISTANT', content, createdAt: new Date(),
+      };
+      savedMessages.push(saved);
+      return saved;
     },
   } as unknown as ConversationRepository;
 
@@ -173,6 +212,11 @@ function createHarness(options: {
   } as unknown as CheckInRepository;
 
   const technicalProblemRepo = {
+    findById: async (id: string) => {
+      knowledgeReads.push(id);
+      return knowledgeRecords.get(id) ?? null;
+    },
+    findProjectTeamId: async () => 'knowledge-team',
     searchSimilar: async (
       userId: string,
       embedding: number[],
@@ -193,7 +237,10 @@ function createHarness(options: {
       openAIService,
       conversationRepo,
       checkInRepo,
-      new TechnicalProblemService(technicalProblemRepo, openAIService, {} as AccessControlService),
+      new TechnicalProblemService(technicalProblemRepo, openAIService, {
+        isAdmin: async () => false,
+        isTeamMember: async () => canReadKnowledge,
+      } as unknown as AccessControlService),
     ),
     createdCheckIns,
     updatedCheckIns,
@@ -201,6 +248,11 @@ function createHarness(options: {
     projectContextsSentToAi,
     embeddingInputs,
     semanticSearches,
+    savedMessages,
+    pendingSuggestions,
+    knowledgeRecords,
+    knowledgeReads,
+    setKnowledgeAccess: (allowed: boolean) => { canReadKnowledge = allowed; },
     extractionCallCount: () => extractionCalls,
   };
 }
@@ -243,6 +295,7 @@ test('cria CheckIn com avanço, dificuldade e próximo passo', async () => {
   assert.deepEqual(harness.embeddingInputs, [
     'O ambiente de homologação está instável durante a integração bancária.',
   ]);
+  assert.equal(harness.pendingSuggestions.size, 0);
 });
 
 test('cria CheckIn sem dificuldade quando a mensagem não relata uma', async () => {
@@ -272,6 +325,7 @@ test('cria CheckIn sem dificuldade quando a mensagem não relata uma', async () 
   assert.equal(result.projects[0].normalizedProblem, null);
   assert.equal(result.projects[0].solutionSuggestion, null);
   assert.equal(harness.semanticSearches.length, 0);
+  assert.equal(harness.pendingSuggestions.size, 0);
 });
 
 test('classifica dificuldade sem causa técnica concreta por projeto', async () => {
@@ -293,6 +347,7 @@ test('classifica dificuldade sem causa técnica concreta por projeto', async () 
   );
 
   assert.equal(result.projects[0].classification, 'DIFFICULTY');
+  assert.equal(harness.pendingSuggestions.size, 0);
   assert.equal(result.projects[0].solutionSuggestion, null);
   assert.equal(result.projects[0].normalizedProblem, null);
   assert.equal(harness.semanticSearches.length, 0);
@@ -523,4 +578,177 @@ test('cada problema técnico mantém sua sugestão isolada sem expor soluções 
   assert.equal(publicJson.includes('"solution"'), false);
   assert.equal(publicJson.includes('similarProblems'), false);
   assert.equal(publicJson.includes('SOLUÇÃO PRIVADA'), false);
+});
+
+const knownSolution = 'Renovar o token OAuth antes da requisição.';
+const knownCandidate: SimilarTechnicalProblem = {
+  id: 'known-oauth', projectId: 'knowledge-project',
+  problem: 'O token OAuth expira antes da requisição ao Protheus.',
+  solution: knownSolution, technology: 'OAuth',
+  author: { id: 'knowledge-author', name: 'Autor' }, similarity: 0.86,
+};
+const technicalContext: ExtractedProjectContext = {
+  projectId: 'finance', summary: 'Falha na autenticação do Protheus.',
+  difficulties: knownCandidate.problem, nextSteps: null,
+  classification: 'TECHNICAL_PROBLEM', normalizedProblem: knownCandidate.problem,
+};
+
+function solutionHarness() {
+  return createHarness({
+    projects: [{ id: 'finance', name: 'Financeiro' }],
+    similarProblems: [knownCandidate], extractions: [[technicalContext], []],
+  });
+}
+
+function assertNoSolution(value: unknown) {
+  const json = JSON.stringify(value);
+  assert.equal(json.includes('"solution"'), false);
+  assert.equal(json.includes(knownSolution), false);
+}
+
+test('match persiste PENDING sem solução/vetor e salva pergunta como Message ASSISTANT', async () => {
+  const harness = solutionHarness();
+  const response = await harness.service.separateMessageByProject('user-1', knownCandidate.problem);
+  const pending = [...harness.pendingSuggestions.values()][0];
+  assert.equal(pending.status, 'PENDING');
+  assert.equal(pending.technicalProblemId, knownCandidate.id);
+  assert.equal(pending.projectId, 'finance');
+  assert.equal(pending.userId, 'user-1');
+  assert.equal(pending.conversationId, response.conversationId);
+  assert.equal('solution' in pending, false);
+  assert.equal('problemEmbedding' in pending, false);
+  assert.equal(response.assistantMessage.content, 'Encontrei um problema parecido. Quer ver a solução?');
+  assert.deepEqual(harness.savedMessages.map((message) => message.role), ['USER', 'ASSISTANT']);
+  assert.equal(harness.savedMessages[1].senderId, undefined);
+  assertNoSolution(response);
+});
+
+for (const reply of ['sim', 'sim mostra', 'sim, mostra', 'mostra', 'pode mostrar', 'quero ver', 'quero a solução', 'manda', 'pode mandar', ' SIM, MOSTRA!!! ']) {
+  test(`aceite "${reply}" revalida conhecimento e mostra solução sem nova IA`, async () => {
+    const harness = solutionHarness();
+    await harness.service.separateMessageByProject('user-1', knownCandidate.problem);
+    const response = await harness.service.separateMessageByProject('user-1', reply);
+    assert.equal([...harness.pendingSuggestions.values()][0].status, 'ACCEPTED');
+    assert.deepEqual(response.acceptedSolution, {
+      projectId: 'finance', technicalProblemId: knownCandidate.id, solution: knownSolution,
+    });
+    assert.equal(response.assistantMessage.role, 'ASSISTANT');
+    assert.equal(response.assistantMessage.content, knownSolution);
+    assert.deepEqual(harness.knowledgeReads, [knownCandidate.id]);
+    assert.equal(harness.extractionCallCount(), 1);
+    assert.equal(harness.embeddingInputs.length, 1);
+    assert.equal(harness.createdCheckIns.length, 1);
+    assert.equal(harness.savedMessages.at(-1)?.content, knownSolution);
+  });
+}
+
+for (const reply of ['não', 'nao', 'agora não', 'agora nao', 'não precisa', 'nao precisa', 'deixa pra lá', 'deixa pra la']) {
+  test(`recusa "${reply}" encerra sem ler ou revelar solução`, async () => {
+    const harness = solutionHarness();
+    await harness.service.separateMessageByProject('user-1', knownCandidate.problem);
+    const response = await harness.service.separateMessageByProject('user-1', reply);
+    assert.equal([...harness.pendingSuggestions.values()][0].status, 'DECLINED');
+    assert.equal(response.assistantMessage.content, 'Sem problema. Seguimos por aqui.');
+    assert.equal(harness.knowledgeReads.length, 0);
+    assert.equal(harness.extractionCallCount(), 1);
+    assertNoSolution(response);
+  });
+}
+
+test('aceite após perder acesso à equipe não revela solução', async () => {
+  const harness = solutionHarness();
+  await harness.service.separateMessageByProject('user-1', knownCandidate.problem);
+  harness.setKnowledgeAccess(false);
+  const response = await harness.service.separateMessageByProject('user-1', 'sim');
+  assert.equal(response.assistantMessage.content, 'Essa solução não está mais disponível para você.');
+  assert.equal([...harness.pendingSuggestions.values()][0].status, 'DECLINED');
+  assertNoSolution(response);
+});
+
+test('aceite revalida autorização de compartilhamento retirada depois da sugestão', async () => {
+  const harness = solutionHarness();
+  await harness.service.separateMessageByProject('user-1', knownCandidate.problem);
+  const record = harness.knowledgeRecords.get(knownCandidate.id)!;
+  harness.knowledgeRecords.set(record.id, { ...record, sharingAuthorizedAt: null });
+  const response = await harness.service.separateMessageByProject('user-1', 'mostra');
+  assert.equal([...harness.pendingSuggestions.values()][0].status, 'DECLINED');
+  assertNoSolution(response);
+});
+
+for (const solution of [null, '   ']) {
+  test(`aceite não revela solução que deixou de existir (${JSON.stringify(solution)})`, async () => {
+    const harness = solutionHarness();
+    await harness.service.separateMessageByProject('user-1', knownCandidate.problem);
+    const record = harness.knowledgeRecords.get(knownCandidate.id)!;
+    harness.knowledgeRecords.set(record.id, { ...record, solution });
+    const response = await harness.service.separateMessageByProject('user-1', 'sim');
+    assert.equal([...harness.pendingSuggestions.values()][0].status, 'DECLINED');
+    assertNoSolution(response);
+  });
+}
+
+test('um usuário não aceita pendência de outro usuário', async () => {
+  const harness = solutionHarness();
+  await harness.service.separateMessageByProject('user-1', knownCandidate.problem);
+  const response = await harness.service.separateMessageByProject('user-2', 'sim');
+  assert.equal([...harness.pendingSuggestions.values()][0].status, 'PENDING');
+  assert.equal(harness.knowledgeReads.length, 0);
+  assertNoSolution(response);
+});
+
+test('resposta ambígua não assume aceite nem recusa', async () => {
+  const harness = solutionHarness();
+  await harness.service.separateMessageByProject('user-1', knownCandidate.problem);
+  const response = await harness.service.separateMessageByProject('user-1', 'talvez, depois');
+  assert.equal([...harness.pendingSuggestions.values()][0].status, 'PENDING');
+  assert.equal(harness.knowledgeReads.length, 0);
+  assertNoSolution(response);
+});
+
+test('duas pendências e "sim" pedem o projeto, sem escolher candidato', async () => {
+  const harness = createHarness({
+    projects: [{ id: 'finance', name: 'Financeiro' }, { id: 'portal', name: 'Portal' }],
+    similarProblems: [knownCandidate],
+    extractions: [[technicalContext, { ...technicalContext, projectId: 'portal' }]],
+  });
+  await harness.service.separateMessageByProject('user-1', 'Falha técnica nos dois projetos.');
+  const response = await harness.service.separateMessageByProject('user-1', 'sim');
+  assert.equal(response.assistantMessage.content, 'Tenho soluções sugeridas para mais de um projeto. Para qual projeto você quer ver a solução?');
+  assert.equal(harness.pendingSuggestions.size, 2);
+  assert.ok([...harness.pendingSuggestions.values()].every((row) => row.status === 'PENDING'));
+  assert.equal(harness.knowledgeReads.length, 0);
+  assert.equal(harness.extractionCallCount(), 1);
+  assertNoSolution(response);
+});
+
+test('nova sugestão do mesmo contexto substitui somente sua pendência anterior', async () => {
+  const another = { ...knownCandidate, id: 'new-oauth', problem: 'Outro problema técnico.', solution: 'Outra solução.' };
+  const harness = createHarness({
+    projects: [{ id: 'finance', name: 'Financeiro' }],
+    similarProblemsByText: { [knownCandidate.problem]: [knownCandidate], [another.problem]: [another] },
+    extractions: [[technicalContext], [{ ...technicalContext, normalizedProblem: another.problem }]],
+  });
+  await harness.service.separateMessageByProject('user-1', knownCandidate.problem);
+  await harness.service.separateMessageByProject('user-1', another.problem);
+  assert.equal(harness.pendingSuggestions.size, 1);
+  assert.equal([...harness.pendingSuggestions.values()][0].technicalProblemId, another.id);
+  const response = await harness.service.separateMessageByProject('user-1', 'sim');
+  assert.equal(response.acceptedSolution?.solution, another.solution);
+});
+
+test('aceites concorrentes não revelam a mesma solução duas vezes', async () => {
+  const harness = solutionHarness();
+  await harness.service.separateMessageByProject('user-1', knownCandidate.problem);
+  const results = await Promise.all([
+    harness.service.separateMessageByProject('user-1', 'sim'),
+    harness.service.separateMessageByProject('user-1', 'mostra'),
+  ]);
+  assert.equal(results.filter((response) => response.acceptedSolution).length, 1);
+  assert.equal(harness.savedMessages.filter((message) => message.role === 'ASSISTANT' && message.content === knownSolution).length, 1);
+});
+
+test('mensagem vazia é rejeitada antes de persistência ou IA', async () => {
+  const harness = solutionHarness();
+  await assert.rejects(() => harness.service.separateMessageByProject('user-1', '   '), /Informe uma mensagem/);
+  assert.equal(harness.savedMessages.length, 0);
 });

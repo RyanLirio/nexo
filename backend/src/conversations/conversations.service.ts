@@ -1,16 +1,41 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ProjectRepository } from '../projects/project.repository';
 import { OpenAIService } from '../ai/openai.service';
-import { ConversationRepository } from './conversation.repository';
+import { ConversationRepository, MessageRecord, PendingSolutionSuggestionRecord } from './conversation.repository';
 import { CheckInRepository } from '../check-ins/check-in.repository';
-import { SimilarTechnicalProblem } from '../technical-problems/technical-problem.repository';
+import { SimilarTechnicalProblem, TechnicalProblemRecord } from '../technical-problems/technical-problem.repository';
 import { TechnicalProblemService } from '../technical-problems/technical-problem.service';
+import { parseSolutionReply } from './solution-reply';
 
 export interface SolutionSuggestion {
   available: true;
   technicalProblemId: string;
   similarity: number;
   technology: string | null;
+}
+
+interface ProjectConversationContext {
+  projectId: string;
+  summary: string;
+  difficulties: string | null;
+  nextSteps: string | null;
+  classification: 'NO_PROBLEM' | 'DIFFICULTY' | 'TECHNICAL_PROBLEM';
+  normalizedProblem: string | null;
+  solutionSuggestion: SolutionSuggestion | null;
+}
+
+interface AcceptedSolution {
+  projectId: string;
+  technicalProblemId: string;
+  solution: string;
+}
+
+export interface ConversationResponse {
+  conversationId: string;
+  messageId: string;
+  projects: ProjectConversationContext[];
+  assistantMessage: Pick<MessageRecord, 'id' | 'role' | 'content'>;
+  acceptedSolution?: AcceptedSolution;
 }
 
 @Injectable()
@@ -67,10 +92,88 @@ export class ConversationsService {
     };
   }
 
+  private response(
+    conversationId: string,
+    messageId: string,
+    assistant: MessageRecord,
+    projects: ProjectConversationContext[] = [],
+    acceptedSolution?: AcceptedSolution,
+  ): ConversationResponse {
+    return {
+      conversationId, messageId, projects,
+      assistantMessage: { id: assistant.id, role: assistant.role, content: assistant.content },
+      ...(acceptedSolution ? { acceptedSolution } : {}),
+    };
+  }
+
+  private async respond(
+    conversationId: string,
+    messageId: string,
+    content: string,
+    projects: ProjectConversationContext[] = [],
+  ): Promise<ConversationResponse> {
+    const assistant = await this.conversationRepo.createMessage({
+      conversationId, role: 'ASSISTANT', content,
+    });
+    return this.response(conversationId, messageId, assistant, projects);
+  }
+
+  private async finishSuggestion(
+    suggestion: PendingSolutionSuggestionRecord,
+    messageId: string,
+    status: 'ACCEPTED' | 'DECLINED',
+    content: string,
+    acceptedSolution?: AcceptedSolution,
+  ): Promise<ConversationResponse> {
+    const assistant = await this.conversationRepo.completeSuggestion(suggestion, status, content);
+    if (!assistant) {
+      return this.respond(suggestion.conversationId, messageId, 'Essa sugestão mudou ou já foi encerrada. Não mostrei nenhuma solução.');
+    }
+    return this.response(suggestion.conversationId, messageId, assistant, [], acceptedSolution);
+  }
+
+  private async answerPending(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+    decision: 'ACCEPTED' | 'DECLINED',
+  ): Promise<ConversationResponse | null> {
+    const pending = (await this.conversationRepo.findPendingSuggestions(userId, conversationId))
+      .filter((suggestion) => suggestion.userId === userId
+        && suggestion.conversationId === conversationId && suggestion.status === 'PENDING');
+    if (pending.length === 0) return null;
+    if (pending.length > 1) {
+      return this.respond(conversationId, messageId, 'Tenho soluções sugeridas para mais de um projeto. Para qual projeto você quer ver a solução?');
+    }
+    const suggestion = pending[0];
+    if (decision === 'DECLINED') {
+      return this.finishSuggestion(suggestion, messageId, 'DECLINED', 'Sem problema. Seguimos por aqui.');
+    }
+
+    let problem: TechnicalProblemRecord;
+    try {
+      // Acesso e consentimento são consultados de novo, nunca copiados da sugestão.
+      problem = await this.technicalProblems.getById(suggestion.technicalProblemId, userId);
+    } catch (error) {
+      if (!(error instanceof NotFoundException || error instanceof ForbiddenException)) throw error;
+      return this.finishSuggestion(suggestion, messageId, 'DECLINED', 'Essa solução não está mais disponível para você.');
+    }
+    const solution = problem.solution?.trim();
+    if (!problem.sharingAuthorizedAt || !solution) {
+      return this.finishSuggestion(suggestion, messageId, 'DECLINED', 'Essa solução não está mais disponível para você.');
+    }
+    return this.finishSuggestion(suggestion, messageId, 'ACCEPTED', solution, {
+      projectId: suggestion.projectId, technicalProblemId: problem.id, solution,
+    });
+  }
+
   async separateMessageByProject(
     userId: string,
     message: string,
-  ) {
+  ): Promise<ConversationResponse> {
+    if (typeof message !== 'string' || !message.trim()) {
+      throw new BadRequestException('Informe uma mensagem.');
+    }
     const now = new Date();
 
     const startOfDay = new Date(now);
@@ -94,8 +197,15 @@ export class ConversationsService {
     const savedMessage = await this.conversationRepo.createMessage({
       conversationId: conversation.id,
       senderId: userId,
+      role: 'USER',
       content: message,
     });
+
+    const decision = parseSolutionReply(message);
+    if (decision) {
+      const response = await this.answerPending(userId, conversation.id, savedMessage.id, decision);
+      if (response) return response;
+    }
 
     const activeProjects = await this.projectRepo.list({
       userId,
@@ -178,21 +288,29 @@ export class ConversationsService {
           project,
         );
 
+        const solutionSuggestion = this.toSolutionSuggestion(similarProblems);
+        if (solutionSuggestion) {
+          await this.conversationRepo.savePendingSuggestion({
+            userId, conversationId: conversation.id, projectId: project.projectId,
+            technicalProblemId: solutionSuggestion.technicalProblemId,
+            similarity: solutionSuggestion.similarity,
+          });
+        }
+
         // Somente metadados da sugestão são públicos; a solução permanece interna.
         return {
           projectId: project.projectId,
           ...context,
           classification: project.classification,
           normalizedProblem: project.normalizedProblem,
-          solutionSuggestion: this.toSolutionSuggestion(similarProblems),
+          solutionSuggestion,
         };
       }),
     );
 
-    return {
-      conversationId: conversation.id,
-      messageId: savedMessage.id,
-      projects: persistedProjects,
-    };
+    const content = persistedProjects.some((project) => project.solutionSuggestion)
+      ? 'Encontrei um problema parecido. Quer ver a solução?'
+      : 'Recebi sua mensagem.';
+    return this.respond(conversation.id, savedMessage.id, content, persistedProjects);
   }
 }

@@ -16,7 +16,8 @@
     "seed": "npm run build && node scripts/seed.cjs",
     "test": "npm run build && node --test \"dist/**/*.spec.js\"",
     "backfill:technical-problem-embeddings": "npm run build && node scripts/backfill-technical-problem-embeddings.cjs",
-    "test:integration:semantic": "npm run build && node scripts/verify-semantic-integration.cjs"
+    "test:integration:semantic": "npm run build && node scripts/verify-semantic-integration.cjs",
+    "test:integration:golden": "npm run build && node scripts/verify-semantic-integration.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

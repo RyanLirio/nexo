@@ -50,8 +50,8 @@ async function createFixtures(prisma) {
       { teamId: ids.foreignTeam, userId: ids.outsider },
     ] });
     await tx.project.createMany({ data: [
-      { id: ids.finance, teamId: ids.team, name: `Automação Financeira ${runId}`, description: 'Integração financeira com o Protheus.', status: 'ACTIVE' },
-      { id: ids.knowledge, teamId: ids.team, name: `Base Técnica ${runId}`, description: 'Histórico técnico para reaproveitamento entre projetos.', status: 'ACTIVE' },
+      { id: ids.finance, teamId: ids.team, name: 'Automação Financeira', description: 'Projeto fictício: integração financeira com o Protheus.', status: 'ACTIVE' },
+      { id: ids.knowledge, teamId: ids.team, name: 'Base Técnica', description: 'Projeto fictício: histórico técnico para reaproveitamento entre projetos.', status: 'ACTIVE' },
       { id: ids.foreignProject, teamId: ids.foreignTeam, name: `Projeto externo ${runId}`, status: 'ACTIVE' },
     ] });
     await tx.projectMember.createMany({ data: [
@@ -59,6 +59,11 @@ async function createFixtures(prisma) {
       { projectId: ids.knowledge, userId: ids.member },
       { projectId: ids.foreignProject, userId: ids.outsider },
     ] });
+    const previousDay = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    await tx.checkIn.create({ data: {
+      id: `${runId}-previous-check-in`, projectId: ids.finance, userId: ids.member,
+      summary: 'Atualização fictícia de uma semana anterior.', createdAt: previousDay,
+    } });
   });
 }
 
@@ -170,16 +175,43 @@ async function verifyHttp(app, knownId) {
   assert.equal((await request(`/api/v1/projects/${ids.foreignProject}/leader-view`, ids.leader)).status, 403);
   assert.equal((await request(`/api/v1/projects/${ids.foreignProject}/leader-view`, ids.admin)).status, 200);
   assert.equal((await request(`/api/v1/projects/${ids.finance}/leader-view`, ids.leader)).status, 200);
+  assert.equal((await request(`/api/v1/projects/${ids.finance}/leader-view`, ids.member)).status, 403);
+  assert.equal((await request(`/api/v1/projects/${ids.foreignProject}/members`, ids.member)).status, 403);
+  assert.equal((await request(`/api/v1/projects/${ids.foreignProject}/check-ins`, ids.member)).status, 403);
+  assert.equal((await request(`/api/v1/projects/arbitrary-missing-id/leader-view`, ids.member)).status, 403);
+  const privateList = await request(`/api/v1/technical-problems/api/v1/projects/${ids.knowledge}/technical-problems`, ids.leader);
+  assert.ok(!privateList.body.some((candidate) => candidate.id === ids.privateProblem), 'Lista legada vazou solução privada.');
+
+  stage = 'Conversation HTTP / conversa comum e dificuldade sem causa';
+  const normal = await request('/api/v1/conversations/message', ids.member, {
+    message: 'Na Base Técnica, terminei a documentação dos testes.',
+  });
+  assert.equal(normal.status, 201);
+  assert.equal(normal.body.projects.find((entry) => entry.projectId === ids.knowledge)?.classification, 'NO_PROBLEM');
+  const difficulty = await request('/api/v1/conversations/message', ids.member, {
+    message: 'Na Base Técnica, estou com dificuldade para avançar e ainda não identifiquei o problema. Meu próximo passo é investigar o bloqueio.',
+  });
+  assert.equal(difficulty.status, 201);
+  const difficultyContext = difficulty.body.projects.find((entry) => entry.projectId === ids.knowledge);
+  assert.equal(difficultyContext?.classification, 'DIFFICULTY');
+  assert.equal(difficultyContext.normalizedProblem, null);
+  assert.equal(difficultyContext.solutionSuggestion, null);
+  console.log('Conversa comum NO_PROBLEM e dificuldade DIFFICULTY sem causa inventada: OK.');
 
   stage = 'Conversation HTTP real / classificação / sugestão sem solução';
   const response = await request('/api/v1/conversations/message', ids.member, {
-    message: `Na Automação Financeira ${runId}, a autenticação com o Protheus falha porque o token OAuth vence antes do envio da requisição.`,
+    message: 'Na Automação Financeira, terminei os testes dos boletos, mas a autenticação com o Protheus falha porque o token OAuth vence antes do envio da requisição. Meu próximo passo é revisar a renovação do token.',
   });
   assert.equal(response.status, 201, 'Conversation real não respondeu com sucesso.');
+  assert.deepEqual(response.body.projects.map((entry) => entry.projectId), [ids.finance],
+    `A extração incluiu outro projeto: ${JSON.stringify(response.body.projects.map(({ projectId, classification }) => ({ projectId, classification })))}`);
   const context = response.body.projects.find((project) => project.projectId === ids.finance);
   assert.ok(context, 'Extração não identificou o projeto mencionado.');
   assert.equal(context.classification, 'TECHNICAL_PROBLEM');
   assert.ok(context.normalizedProblem?.trim());
+  assert.ok(context.summary?.trim());
+  assert.ok(context.difficulties?.trim(), 'Dificuldade explícita não foi extraída.');
+  assert.ok(context.nextSteps?.trim(), 'Próximo passo explícito não foi extraído.');
   assert.equal(context.solutionSuggestion?.technicalProblemId, knownId);
   assert.ok(context.solutionSuggestion.similarity >= 0.78);
   const json = JSON.stringify(response.body);
@@ -199,6 +231,30 @@ async function verifyHttp(app, knownId) {
   const question = await prisma.message.findUnique({ where: { id: response.body.assistantMessage.id } });
   assert.equal(question.role, 'ASSISTANT');
   assert.equal(question.content, 'Encontrei um problema parecido. Quer ver a solução?');
+
+  stage = 'Fase 5 / líder consulta CheckIn individual e histórico';
+  const leaderView = await request(`/api/v1/projects/${ids.finance}/leader-view`, ids.leader);
+  assert.equal(leaderView.status, 200);
+  const memberContext = leaderView.body.members.find((member) => member.userId === ids.member);
+  assert.ok(memberContext?.latestCheckIn, 'Líder não recebeu CheckIn individual.');
+  assert.equal(memberContext.latestCheckIn.summary, context.summary);
+  assert.equal(memberContext.latestCheckIn.difficulties, context.difficulties);
+  assert.equal(memberContext.latestCheckIn.nextSteps, context.nextSteps);
+  const history = await request(`/api/v1/projects/${ids.finance}/check-ins?userId=${ids.member}`, ids.leader);
+  assert.equal(history.status, 200);
+  assert.ok(history.body.every((entry) => !('messages' in entry)), 'Histórico expôs Conversation privada por meio de CheckInMessage.');
+  assert.ok(history.body.some((entry) => entry.id === memberContext.latestCheckIn.id));
+  assert.ok(history.body.some((entry) => entry.id === `${runId}-previous-check-in`), 'Histórico anterior desapareceu.');
+  assert.equal((await request(`/api/v1/check-ins/${memberContext.latestCheckIn.id}`, ids.outsider)).status, 403);
+  const adminCheckIn = await request(`/api/v1/check-ins/${memberContext.latestCheckIn.id}`, ids.admin);
+  assert.equal(adminCheckIn.status, 200);
+  assert.ok(!('messages' in adminCheckIn.body), 'Detalhe do CheckIn expôs Conversation privada.');
+  const tools = app.get(AiToolsService);
+  const ownMessages = await tools.executeTool('get_recent_messages', { limit: 20 }, ids.outsider);
+  assert.ok(!JSON.stringify(ownMessages).includes(response.body.messageId), 'Usuário leu Conversation alheia.');
+  const attemptedMessages = await tools.executeTool('get_recent_messages', { limit: 20, userId: ids.member }, ids.outsider);
+  assert.ok(!JSON.stringify(attemptedMessages).includes(response.body.messageId), 'userId fornecido burlou isolamento.');
+  console.log('Golden path: CheckIn com três campos, líder por membro/histórico, MEMBER bloqueado e Conversation isolada: OK.');
 
   stage = 'Fase 4 / resposta de outro usuário';
   const foreignReply = await request('/api/v1/conversations/message', ids.outsider, { message: 'sim' });
@@ -328,7 +384,10 @@ async function main() {
     stage = 'endpoints HTTP autenticados / autorização';
     const response = await verifyHttp(app, known.id);
     stage = 'persistência CheckIn / vínculo com Message';
-    const checkIn = await prisma.checkIn.findFirst({ where: { userId: ids.member, projectId: ids.finance }, include: { messages: true } });
+    const checkIn = await prisma.checkIn.findFirst({
+      where: { userId: ids.member, projectId: ids.finance, messages: { some: { messageId: response.messageId } } },
+      include: { messages: true },
+    });
     const context = response.projects.find((project) => project.projectId === ids.finance);
     assert.ok(checkIn, 'CheckIn não persistido.');
     assert.equal(checkIn.summary, context.summary);

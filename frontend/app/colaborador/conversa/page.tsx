@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AuthSession, clearAuthSession, readAuthSession } from '../../../lib/auth-session';
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
@@ -53,15 +53,19 @@ export default function ConversationPage() {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sending = useRef(false);
+  const messageEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSession(readAuthSession());
   }, []);
+  useEffect(() => { messageEnd.current?.scrollIntoView({ block: 'nearest' }); }, [messages, loading]);
 
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = text.trim();
-    if (!message || loading) return;
+    if (!message || sending.current) return;
+    sending.current = true;
 
     const currentSession = readAuthSession();
     const messageId = crypto.randomUUID();
@@ -77,6 +81,7 @@ export default function ConversationPage() {
     if (!currentSession) {
       setError('Sua sessão não está disponível. Entre novamente para continuar.');
       setLoading(false);
+      sending.current = false;
       return;
     }
 
@@ -105,7 +110,7 @@ export default function ConversationPage() {
       }
 
       if (!isConversationResponse(body)) {
-        throw new Error('O backend retornou uma resposta em formato inesperado.');
+        throw new Error('Não foi possível ler a resposta do Nexo. Tente novamente.');
       }
 
       setMessages((current) => [
@@ -113,9 +118,10 @@ export default function ConversationPage() {
         { id: body.assistantMessage.id, author: 'nexo', text: body.assistantMessage.content },
       ]);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível processar sua mensagem. Tente novamente.');
+      setError(cause instanceof TypeError ? 'Não foi possível conectar ao Nexo. Tente novamente.' : cause instanceof Error ? cause.message : 'Não foi possível processar sua mensagem. Tente novamente.');
     } finally {
       setLoading(false);
+      sending.current = false;
     }
   }
 
@@ -136,7 +142,7 @@ export default function ConversationPage() {
             <span className="chat-symbol" aria-hidden="true">✳</span>
             <span>
               <strong id="conversation-panel-title">Nexo</strong>
-              <small>Conversa geral · resposta real do backend</small>
+              <small>Seu contexto de trabalho</small>
             </span>
           </div>
           <span className="panel-badge"><span className="live-dot" /> IA conectada</span>
@@ -164,6 +170,7 @@ export default function ConversationPage() {
               <div className="message message-loading"><strong>Nexo</strong><p>Nexo está analisando…</p></div>
             </div>
           )}
+          <div ref={messageEnd} />
         </div>
 
         {error && <p className="conversation-error" role="alert">{error}</p>}

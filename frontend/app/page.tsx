@@ -9,12 +9,12 @@ export default function Home() {
         <p>Projetos, atualizações e dificuldades em um só lugar. Para que cada pessoa saiba onde o trabalho está e qual é o próximo passo.</p>
         <div className="landing-actions">
           <Link className="button" href="/login">Explorar o Nexo <span aria-hidden="true">↗</span></Link>
-          <Link className="text-link" href="/colaborador">Ver painel de exemplo <span aria-hidden="true">→</span></Link>
+          <Link className="text-link" href="/colaborador">Ver meus projetos <span aria-hidden="true">→</span></Link>
         </div>
-        <div className="landing-note"><span className="live-dot" /> Protótipo interativo com dados de demonstração</div>
+        <div className="landing-note"><span className="live-dot" /> Conversas que preservam o contexto do trabalho</div>
       </div>
-      <div className="landing-preview" aria-label="Prévia do painel de projetos">
-        <div className="preview-top"><span className="preview-logo">✳</span><span>Visão de hoje</span><span>•••</span></div>
+      <div className="landing-preview" aria-label="Ilustração do painel, não representa dados da sua equipe">
+        <div className="preview-top"><span className="preview-logo">✳</span><span>Exemplo ilustrativo</span><span>•••</span></div>
         <div className="preview-heading">O trabalho segue melhor<br />quando o contexto circula.</div>
         <div className="preview-card"><span className="preview-icon preview-icon-blue">↗</span><span><strong>Conciliação Financeira</strong><small>Avanço registrado hoje</small></span><span className="preview-arrow">→</span></div>
         <div className="preview-card"><span className="preview-icon preview-icon-orange">!</span><span><strong>Integração de Pedidos</strong><small>Dificuldade para acompanhar</small></span><span className="preview-arrow">→</span></div>

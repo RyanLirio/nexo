@@ -15,7 +15,13 @@ export class PrismaProjectRepository extends ProjectRepository {
         team: { select: { id: true, name: true } },
         leader: { select: { id: true, name: true, email: true } },
         responsibleUser: { select: { id: true, name: true, email: true } },
-        members: { include: { user: { select: { id: true, name: true, email: true } } } },
+        members: { include: { user: { select: {
+          id: true, name: true, email: true,
+          checkIns: {
+            where: { projectId: id }, orderBy: { createdAt: 'desc' }, take: 1,
+            select: { id: true, summary: true, difficulties: true, nextSteps: true, createdAt: true, updatedAt: true },
+          },
+        } } } },
         checkIns: { orderBy: { createdAt: 'desc' }, take: 1 },
         technicalProblems: {
           where: { solution: null },
@@ -38,6 +44,7 @@ export class PrismaProjectRepository extends ProjectRepository {
         team: { select: { id: true, name: true } },
         leader: { select: { id: true, name: true } },
         responsibleUser: { select: { id: true, name: true } },
+        _count: { select: { members: true } },
         checkIns: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
       orderBy: { name: 'asc' },

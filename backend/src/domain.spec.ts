@@ -22,6 +22,7 @@ const legacyTechnicalAccess = { isAdmin: async () => true } as unknown as Access
 const projectReadAccess = {
   isAdmin: async () => false,
   isTeamMember: async (userId: string) => userId !== 'user-outsider',
+  isTeamLeader: async (userId: string) => userId === 'leader-1',
 } as unknown as AccessControlService;
 
 const embeddingUnavailable = {

@@ -41,11 +41,11 @@ export class ProjectsService {
   }
 
   async getLeaderView(id: string, currentUserId: string): Promise<any> {
-    const isMember = await this.isMember(id, currentUserId);
-    if (!isMember) {
+    const project = await this.getById(id, currentUserId);
+    if (!(await this.accessControl.isAdmin(currentUserId))
+      && !(await this.accessControl.isTeamLeader(currentUserId, project.teamId))) {
       throw new ForbiddenException('Você não tem permissão para acessar a visão do líder deste projeto.');
     }
-    const project = await this.getById(id, currentUserId);
     return {
       id: project.id,
       name: project.name,
@@ -56,7 +56,13 @@ export class ProjectsService {
       team: project.team,
       leader: project.leader,
       responsibleUser: project.responsibleUser,
-      members: project.members || [],
+      members: (project.members || []).map((member: ProjectMemberRecord & {
+        user?: NonNullable<ProjectMemberRecord['user']> & { checkIns?: unknown[] };
+      }) => ({
+        ...member,
+        user: member.user ? { id: member.user.id, name: member.user.name, email: member.user.email } : undefined,
+        latestCheckIn: member.user?.checkIns?.[0] ?? null,
+      })),
       latestCheckIn: project.checkIns?.[0] || null,
       openTechnicalProblems: project.technicalProblems || [],
     };

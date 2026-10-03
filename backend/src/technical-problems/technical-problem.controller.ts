@@ -37,7 +37,6 @@ export class TechnicalProblemController {
     return this.technicalProblems.list(undefined, projectId, {
       status,
       technology,
-      onlyAuthorized: false,
     }, user.id);
   }
 

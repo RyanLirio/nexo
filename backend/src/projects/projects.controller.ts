@@ -69,7 +69,8 @@ export class ProjectsController {
   }
 
   @Get(':id/members')
-  listMembers(@Param('id') id: string) {
+  async listMembers(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    await this.projects.getById(id, user.id);
     return this.projects.listMembers(id);
   }
 

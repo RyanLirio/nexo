@@ -2,19 +2,29 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/co
 import { AuthGuard, AuthenticatedUser } from '../common/auth/auth.guard';
 import { CurrentUser } from '../common/auth/current-user.decorator';
 import { CheckInsService } from './check-ins.service';
+import { ProjectsService } from '../projects/projects.service';
+import { CheckInRecord } from './check-in.repository';
 
 @Controller('api/v1')
 export class CheckInsController {
-  constructor(private readonly checkIns: CheckInsService) {}
+  constructor(private readonly checkIns: CheckInsService, private readonly projects: ProjectsService) {}
+
+  private toContext({ messages: _messages, ...context }: CheckInRecord) {
+    // A equipe consulta o CheckIn estruturado, não a Conversation privada de outra pessoa.
+    return context;
+  }
 
   @Get('projects/:projectId/check-ins')
-  listByProject(
+  async listByProject(
     @Param('projectId') projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Query('userId') userId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.checkIns.list(projectId, { userId, startDate, endDate });
+    await this.projects.getById(projectId, user.id);
+    const checkIns = await this.checkIns.list(projectId, { userId, startDate, endDate });
+    return checkIns.map(checkIn => this.toContext(checkIn));
   }
 
 
@@ -29,7 +39,9 @@ export class CheckInsController {
   }
 
   @Get('check-ins/:id')
-  getById(@Param('id') id: string) {
-    return this.checkIns.getById(id);
+  async getById(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    const checkIn = await this.checkIns.getById(id);
+    await this.projects.getById(checkIn.projectId, user.id);
+    return this.toContext(checkIn);
   }
 }

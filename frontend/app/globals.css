@@ -245,6 +245,24 @@ body:has(.login-page) .topnav, body:has(.login-page) .profile-link { display: no
 }
 
 /* Tema escuro */
+.context-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 18px; }
+.context-card { padding: 24px; overflow-wrap: anywhere; }
+.context-card h3 { margin: 12px 0; font-size: 20px; }
+.context-card p, .check-in-fields dd { white-space: pre-wrap; line-height: 1.65; }
+.context-muted, .context-card time { color: var(--muted); }
+.context-section { margin-top: 32px; }
+.project-facts, .check-in-fields { margin: 16px 0; }
+.project-facts > div { display: flex; justify-content: space-between; gap: 14px; padding: 6px 0; }
+.project-facts dt, .check-in-fields dt { color: var(--muted); font-size: 13px; }
+.project-facts dd { margin: 0; text-align: right; font-size: 13px; }
+.check-in-fields > div { margin-top: 18px; }
+.check-in-fields dd { margin: 6px 0 0; font-size: 14px; }
+.history-entry { margin-top: 12px; }
+.history-entry summary, .context-card details summary { cursor: pointer; min-height: 36px; }
+.history-filter { display: flex; align-items: center; gap: 12px; margin: 18px 0; }
+.history-filter select { padding: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); background: var(--surface-strong); }
+.conversation-chat .message p { white-space: pre-wrap; overflow-wrap: anywhere; }
+
 :root[data-theme='dark'] {
   color-scheme: dark;
   --background: #0d1512;

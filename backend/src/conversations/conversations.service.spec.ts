@@ -67,6 +67,7 @@ function createHarness(options: {
   extractions: ExtractedProjectContext[][];
   existingCheckIns?: CheckInRecord[];
   similarProblems?: SimilarTechnicalProblem[];
+  similarProblemsByText?: Record<string, SimilarTechnicalProblem[]>;
 }) {
   const checkIns = new Map(
     (options.existingCheckIns ?? []).map((checkIn) => [
@@ -106,7 +107,9 @@ function createHarness(options: {
     },
     generateEmbedding: async (text: string) => {
       embeddingInputs.push(text);
-      return Array.from({ length: 1536 }, () => 0.01);
+      const embedding = Array.from({ length: 1536 }, () => 0.01);
+      embedding[0] = embeddingInputs.length;
+      return embedding;
     },
   } as unknown as OpenAIService;
 
@@ -177,6 +180,9 @@ function createHarness(options: {
       threshold?: number,
     ) => {
       semanticSearches.push({ userId, embedding, limit, threshold });
+      if (options.similarProblemsByText) {
+        return options.similarProblemsByText[embeddingInputs[embedding[0] - 1]] ?? [];
+      }
       return options.similarProblems ?? [];
     },
   } as unknown as TechnicalProblemRepository;
@@ -232,7 +238,7 @@ test('cria CheckIn com avanço, dificuldade e próximo passo', async () => {
     nextSteps: 'Validar os retornos bancários amanhã.',
     classification: 'TECHNICAL_PROBLEM',
     normalizedProblem: 'O ambiente de homologação está instável durante a integração bancária.',
-    similarProblems: [],
+    solutionSuggestion: null,
   });
   assert.deepEqual(harness.embeddingInputs, [
     'O ambiente de homologação está instável durante a integração bancária.',
@@ -264,6 +270,7 @@ test('cria CheckIn sem dificuldade quando a mensagem não relata uma', async () 
   );
   assert.equal(result.projects[0].classification, 'NO_PROBLEM');
   assert.equal(result.projects[0].normalizedProblem, null);
+  assert.equal(result.projects[0].solutionSuggestion, null);
   assert.equal(harness.semanticSearches.length, 0);
 });
 
@@ -286,6 +293,7 @@ test('classifica dificuldade sem causa técnica concreta por projeto', async () 
   );
 
   assert.equal(result.projects[0].classification, 'DIFFICULTY');
+  assert.equal(result.projects[0].solutionSuggestion, null);
   assert.equal(result.projects[0].normalizedProblem, null);
   assert.equal(harness.semanticSearches.length, 0);
   assert.equal(
@@ -467,13 +475,52 @@ test('mantém contextos isolados quando uma mensagem menciona dois projetos', as
   assert.deepEqual(harness.embeddingInputs, [
     'O login falha no navegador Safari no Portal.',
   ]);
-  assert.deepEqual(result.projects[0].similarProblems, []);
-  assert.equal(result.projects[1].similarProblems[0].similarity, 0.84);
-  assert.equal(
-    result.projects[1].similarProblems[0].projectId,
-    'project-legacy',
-  );
+  assert.equal(result.projects[0].solutionSuggestion, null);
+  assert.deepEqual(result.projects[1].solutionSuggestion, {
+    available: true,
+    technicalProblemId: 'problem-from-another-project',
+    similarity: 0.84,
+    technology: 'Safari',
+  });
+  assert.equal(JSON.stringify(result).includes('"solution"'), false);
+  assert.equal(JSON.stringify(result).includes('Atualizar o tratamento'), false);
   assert.equal(harness.semanticSearches[0].limit, 5);
   assert.equal(harness.semanticSearches[0].threshold, 0.78);
   assert.equal(harness.semanticSearches[0].userId, 'user-1');
+});
+
+test('cada problema técnico mantém sua sugestão isolada sem expor soluções internas', async () => {
+  const oauthProblem = 'O token OAuth expira antes da requisição ao Protheus.';
+  const apiProblem = 'A API de boletos retorna erro 500.';
+  const candidate = (id: string, problem: string, similarity: number): SimilarTechnicalProblem => ({
+    id,
+    projectId: 'project-knowledge',
+    problem,
+    solution: `SOLUÇÃO PRIVADA ${id}`,
+    technology: null,
+    author: { id: 'author-1', name: 'Autor' },
+    similarity,
+  });
+  const oauthCandidates = [candidate('oauth-match', oauthProblem, 0.9), candidate('oauth-second', oauthProblem, 0.82)];
+  const apiCandidates = [candidate('api-match', apiProblem, 0.85)];
+  const harness = createHarness({
+    projects: [{ id: 'finance', name: 'Financeiro' }, { id: 'portal', name: 'Portal' }],
+    similarProblemsByText: { [oauthProblem]: oauthCandidates, [apiProblem]: apiCandidates },
+    extractions: [[
+      { projectId: 'finance', summary: 'Falha na autenticação.', difficulties: oauthProblem, nextSteps: null, classification: 'TECHNICAL_PROBLEM', normalizedProblem: oauthProblem },
+      { projectId: 'portal', summary: 'Falha na emissão de boletos.', difficulties: apiProblem, nextSteps: null, classification: 'TECHNICAL_PROBLEM', normalizedProblem: apiProblem },
+    ]],
+  });
+
+  const result = await harness.service.separateMessageByProject('user-1', 'No Financeiro o token expira; no Portal a API retorna 500.');
+
+  assert.equal(oauthCandidates[0].solution, 'SOLUÇÃO PRIVADA oauth-match');
+  assert.deepEqual(result.projects.map((project) => project.solutionSuggestion?.technicalProblemId), ['oauth-match', 'api-match']);
+  assert.deepEqual(result.projects.map((project) => project.solutionSuggestion?.similarity), [0.9, 0.85]);
+  assert.equal(harness.extractionCallCount(), 1);
+  assert.deepEqual(harness.embeddingInputs, [oauthProblem, apiProblem]);
+  const publicJson = JSON.stringify(result);
+  assert.equal(publicJson.includes('"solution"'), false);
+  assert.equal(publicJson.includes('similarProblems'), false);
+  assert.equal(publicJson.includes('SOLUÇÃO PRIVADA'), false);
 });

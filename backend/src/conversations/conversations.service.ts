@@ -3,10 +3,15 @@ import { ProjectRepository } from '../projects/project.repository';
 import { OpenAIService } from '../ai/openai.service';
 import { ConversationRepository } from './conversation.repository';
 import { CheckInRepository } from '../check-ins/check-in.repository';
-import {
-  SimilarTechnicalProblem,
-} from '../technical-problems/technical-problem.repository';
+import { SimilarTechnicalProblem } from '../technical-problems/technical-problem.repository';
 import { TechnicalProblemService } from '../technical-problems/technical-problem.service';
+
+export interface SolutionSuggestion {
+  available: true;
+  technicalProblemId: string;
+  similarity: number;
+  technology: string | null;
+}
 
 @Injectable()
 export class ConversationsService {
@@ -46,6 +51,20 @@ export class ConversationsService {
     }
 
     return similarProblems;
+  }
+
+  private toSolutionSuggestion(
+    candidates: SimilarTechnicalProblem[],
+  ): SolutionSuggestion | null {
+    const candidate = candidates[0];
+    if (!candidate) return null;
+
+    return {
+      available: true,
+      technicalProblemId: candidate.id,
+      similarity: candidate.similarity,
+      technology: candidate.technology,
+    };
   }
 
   async separateMessageByProject(
@@ -159,7 +178,14 @@ export class ConversationsService {
           project,
         );
 
-        return { ...project, ...context, similarProblems };
+        // Somente metadados da sugestão são públicos; a solução permanece interna.
+        return {
+          projectId: project.projectId,
+          ...context,
+          classification: project.classification,
+          normalizedProblem: project.normalizedProblem,
+          solutionSuggestion: this.toSolutionSuggestion(similarProblems),
+        };
       }),
     );
 

@@ -1,32 +1,33 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
-import { AuthSession, readAuthSession } from '../../../lib/auth-session';
+import { AuthSession, clearAuthSession, readAuthSession } from '../../../lib/auth-session';
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
 
 interface ConversationResponse {
-  projects: Array<{
-    projectId: string;
-    summary: string;
-  }>;
+  assistantMessage: {
+    id: string;
+    role: 'ASSISTANT';
+    content: string;
+  };
 }
 
-type ChatMessage =
-  | { id: string; author: 'user'; text: string }
-  | { id: string; author: 'nexo'; text: string }
-  | { id: string; author: 'nexo'; response: ConversationResponse };
+interface ChatMessage {
+  id: string;
+  author: 'user' | 'nexo';
+  text: string;
+}
 
 function isConversationResponse(value: unknown): value is ConversationResponse {
-  if (!value || typeof value !== 'object' || !('projects' in value)) return false;
-
-  const projects = (value as { projects?: unknown }).projects;
-  return Array.isArray(projects) && projects.every((project) => (
-    project !== null
-    && typeof project === 'object'
-    && typeof (project as { projectId?: unknown }).projectId === 'string'
-    && typeof (project as { summary?: unknown }).summary === 'string'
-  ));
+  if (!value || typeof value !== 'object' || !('assistantMessage' in value)) return false;
+  const assistantMessage = (value as { assistantMessage?: unknown }).assistantMessage;
+  return assistantMessage !== null
+    && typeof assistantMessage === 'object'
+    && typeof (assistantMessage as { id?: unknown }).id === 'string'
+    && (assistantMessage as { role?: unknown }).role === 'ASSISTANT'
+    && typeof (assistantMessage as { content?: unknown }).content === 'string';
 }
 
 function errorMessage(body: unknown): string {
@@ -40,6 +41,7 @@ function errorMessage(body: unknown): string {
 }
 
 export default function ConversationPage() {
+  const router = useRouter();
   const [session, setSession] = useState<AuthSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -62,7 +64,7 @@ export default function ConversationPage() {
     if (!message || loading) return;
 
     const currentSession = readAuthSession();
-    const messageId = Date.now().toString();
+    const messageId = crypto.randomUUID();
 
     setMessages((current) => [
       ...current,
@@ -89,8 +91,17 @@ export default function ConversationPage() {
       });
       const body: unknown = await response.json().catch(() => null);
 
+      if (response.status === 401) {
+        clearAuthSession();
+        setSession(null);
+        router.replace('/login');
+        return;
+      }
+
       if (!response.ok) {
-        throw new Error(errorMessage(body));
+        throw new Error(response.status >= 500
+          ? 'Não foi possível processar sua mensagem. Tente novamente.'
+          : errorMessage(body));
       }
 
       if (!isConversationResponse(body)) {
@@ -98,11 +109,11 @@ export default function ConversationPage() {
       }
 
       setMessages((current) => [
-        ...current,
-        { id: `${messageId}-nexo`, author: 'nexo', response: body },
+        ...current.filter((item) => item.id !== body.assistantMessage.id),
+        { id: body.assistantMessage.id, author: 'nexo', text: body.assistantMessage.content },
       ]);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível analisar a mensagem. Tente novamente.');
+      setError(cause instanceof Error ? cause.message : 'Não foi possível processar sua mensagem. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -139,10 +150,9 @@ export default function ConversationPage() {
                 <span className={`message-avatar ${isUser ? 'message-avatar-user' : ''}`} aria-hidden="true">
                   {isUser ? userInitial : '✳'}
                 </span>
-                <div className={`message ${'response' in message ? 'message-response' : ''}`}>
+                <div className="message">
                   <strong>{isUser ? userName : 'Nexo'}</strong>
-                  {'text' in message && <p>{message.text}</p>}
-                  {'response' in message && <pre>{JSON.stringify(message.response, null, 2)}</pre>}
+                  <p>{message.text}</p>
                 </div>
               </div>
             );
@@ -151,7 +161,7 @@ export default function ConversationPage() {
           {loading && (
             <div className="message-row" role="status">
               <span className="message-avatar" aria-hidden="true">✳</span>
-              <div className="message message-loading"><strong>Nexo</strong><p>Analisando a mensagem por projeto…</p></div>
+              <div className="message message-loading"><strong>Nexo</strong><p>Nexo está analisando…</p></div>
             </div>
           )}
         </div>
@@ -172,7 +182,7 @@ export default function ConversationPage() {
             {loading ? 'Enviando…' : 'Enviar'} <span aria-hidden="true">↗</span>
           </button>
         </form>
-        <p className="chat-note">Esta integração não salva histórico. Cada resposta abaixo vem diretamente do endpoint de conversa.</p>
+        <p className="chat-note">Suas mensagens ajudam o Nexo a manter o contexto dos projetos durante o trabalho.</p>
       </section>
     </main>
   );

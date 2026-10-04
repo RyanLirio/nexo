@@ -20,6 +20,8 @@ import {
   PendingSolutionSuggestionRecord,
 } from './conversation.repository';
 import { ConversationsService } from './conversations.service';
+import { UserRepository } from '../users/user.repository';
+import { ProjectsService } from '../projects/projects.service';
 
 type CheckInCreateData = Parameters<CheckInRepository['create']>[0];
 type CheckInUpdateData = Parameters<CheckInRepository['updateContext']>[1];
@@ -257,6 +259,8 @@ function createHarness(options: {
         isTeamMember: async () => canReadKnowledge,
       } as unknown as AccessControlService),
       { isAdmin: async () => false, isTeamMember: async () => true } as unknown as AccessControlService,
+      { findById: async (id: string) => ({ id, name: 'Colaborador', role: 'MEMBER' }) } as unknown as UserRepository,
+      {} as ProjectsService,
     ),
     createdCheckIns,
     updatedCheckIns,

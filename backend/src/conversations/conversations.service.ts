@@ -7,6 +7,10 @@ import { SimilarTechnicalProblem, TechnicalProblemRecord } from '../technical-pr
 import { TechnicalProblemService } from '../technical-problems/technical-problem.service';
 import { findPendingProjectSelection, isStandaloneSolutionReply, parseSolutionReply } from './solution-reply';
 import { AccessControlService } from '../common/auth/access-control.service';
+import { UserRepository } from '../users/user.repository';
+import { ProjectsService } from '../projects/projects.service';
+import { ProjectRecord } from '../projects/project.repository';
+import { ConversationIdentity, LeadershipProjectContext, selectLeadershipProjects } from './leadership-context';
 
 export interface SolutionSuggestion {
   available: true;
@@ -52,6 +56,8 @@ export class ConversationsService {
     private readonly checkInRepo: CheckInRepository,
     private readonly technicalProblems: TechnicalProblemService,
     private readonly accessControl: AccessControlService,
+    private readonly users: UserRepository,
+    private readonly projectsService: ProjectsService,
   ) {}
 
   private dayBounds() {
@@ -68,6 +74,34 @@ export class ConversationsService {
     if (!conversation) return { conversationId: null, messages: [] };
     const messages = await this.conversationRepo.findConversationMessages(conversation.id, userId, 50);
     return { conversationId: conversation.id, messages: messages.map(({ id, role, content, createdAt }) => ({ id, role, content, createdAt })) };
+  }
+
+  private async leadershipContext(user: ConversationIdentity, message: string, history: Array<Pick<MessageRecord, 'role' | 'content'>>) {
+    const projects: ProjectRecord[] = await this.projectsService.list(undefined, user.id);
+    const directory = await Promise.all(projects.map(async project => ({
+      id: project.id, name: project.name,
+      members: (await this.projectRepo.listMembers(project.id)).flatMap(member => member.user
+        ? [{ id: member.user.id, name: member.user.name }] : []),
+    })));
+    const selection = selectLeadershipProjects(message, history, directory);
+    if (selection.clarification) return { directory, clarification: selection.clarification, contexts: [], hasMoreProjects: false };
+    const contexts: LeadershipProjectContext[] = [];
+    for (const project of selection.projects.slice(0, 10)) {
+      const view: { id: string; name: string; status: string; members: Array<{
+        user?: { id: string; name: string }; latestCheckIn?: { summary: string; difficulties?: string | null; nextSteps?: string | null; updatedAt: Date } | null;
+      }> } = await this.projectsService.getLeaderView(project.id, user.id);
+      const shared = await this.technicalProblems.list(undefined, project.id, { onlyAuthorized: true }, user.id);
+      contexts.push({
+        id: view.id, name: view.name, status: view.status,
+        members: view.members.filter(member => member.user && (!selection.memberIds.length || selection.memberIds.includes(member.user.id)))
+          .map(member => ({ id: member.user!.id, name: member.user!.name, latestUpdate: member.latestCheckIn ? {
+            summary: member.latestCheckIn.summary, difficulties: member.latestCheckIn.difficulties ?? null,
+            nextSteps: member.latestCheckIn.nextSteps ?? null, updatedAt: member.latestCheckIn.updatedAt,
+          } : null })),
+        technicalProblems: shared.slice(0, 5).map(problem => ({ title: problem.title, problem: problem.problem, technology: problem.technology ?? null })),
+      });
+    }
+    return { directory, contexts, hasMoreProjects: selection.projects.length > 10 };
   }
 
   private async searchSimilarProblems(userId: string, project: {
@@ -238,6 +272,9 @@ export class ConversationsService {
   }
 
   private async processMessage(userId: string, message: string): Promise<ConversationResponse> {
+    const account = await this.users.findById(userId);
+    if (!account || !['MEMBER', 'LEADER', 'ADMIN'].includes(account.role)) throw new ForbiddenException('Usuário autenticado não disponível.');
+    const authenticatedUser: ConversationIdentity = { id: account.id, name: account.name, role: account.role as ConversationIdentity['role'] };
     const { start: startOfDay, end: endOfDay } = this.dayBounds();
 
     let conversation =
@@ -261,6 +298,18 @@ export class ConversationsService {
 
     const pendingResponse = await this.answerPending(userId, conversation.id, savedMessage.id, message);
     if (pendingResponse) return pendingResponse;
+
+    const history = (await this.conversationRepo.findConversationMessages(conversation.id, userId, RECENT_CONVERSATION_LIMIT + 1))
+      .filter(previous => previous.id !== savedMessage.id).slice(-RECENT_CONVERSATION_LIMIT)
+      .map(({ role, content }) => ({ role, content }));
+    if (authenticatedUser.role !== 'MEMBER') {
+      const leadership = await this.leadershipContext(authenticatedUser, message, history);
+      if (leadership.clarification) return this.respond(conversation.id, savedMessage.id, leadership.clarification);
+      const result = await this.openAIService.extractProjectContexts(message, leadership.directory, history, {
+        authenticatedUser, leadershipContext: leadership.contexts, hasMoreProjects: leadership.hasMoreProjects,
+      });
+      return this.respond(conversation.id, savedMessage.id, result.assistantResponse);
+    }
 
     const activeProjects = await this.projectRepo.list({
       userId,
@@ -292,14 +341,8 @@ export class ConversationsService {
     const result = await this.openAIService.extractProjectContexts(
       message,
       projectsWithDailyContext,
-      (await this.conversationRepo.findConversationMessages(
-        conversation.id,
-        userId,
-        RECENT_CONVERSATION_LIMIT + 1,
-      ))
-        .filter((previous) => previous.id !== savedMessage.id)
-        .slice(-RECENT_CONVERSATION_LIMIT)
-        .map(({ role, content }) => ({ role, content })),
+      history,
+      { authenticatedUser },
     );
 
     const validProjectIds = new Set(

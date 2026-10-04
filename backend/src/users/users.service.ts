@@ -16,9 +16,10 @@ export class UsersService {
   async getMeProjects(
     userId: string,
     filter?: { relation?: 'member' | 'responsible' | 'leader'; status?: string },
+    viewerId?: string,
   ): Promise<UserProjectRecord[]> {
     await this.getMe(userId);
-    return this.userRepo.findUserProjects(userId, filter?.relation, filter?.status);
+    return this.userRepo.findUserProjects(userId, filter?.relation, filter?.status, viewerId);
   }
 
   async list(search?: string): Promise<UserRecord[]> {
@@ -36,8 +37,9 @@ export class UsersService {
   async getProjects(
     userId: string,
     filter?: { relation?: 'member' | 'responsible' | 'leader'; status?: string },
+    viewerId?: string,
   ): Promise<UserProjectRecord[]> {
     await this.getById(userId);
-    return this.userRepo.findUserProjects(userId, filter?.relation, filter?.status);
+    return this.userRepo.findUserProjects(userId, filter?.relation, filter?.status, viewerId);
   }
 }

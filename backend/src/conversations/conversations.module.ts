@@ -8,9 +8,11 @@ import { PrismaConversationRepository } from './prisma-conversation.repository';
 import { PrismaService } from '../prisma.service';
 import { CheckInsModule } from '../check-ins/check-ins.module';
 import { TechnicalProblemModule } from '../technical-problems/technical-problem.module';
+import { AccessControlModule } from '../common/auth/access-control.module';
 
 @Module({
   imports: [
+    AccessControlModule,
     ProjectsModule,
     AiModule,
     CheckInsModule,

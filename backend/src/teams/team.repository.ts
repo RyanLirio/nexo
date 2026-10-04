@@ -18,7 +18,7 @@ export interface TeamMemberRecord {
 }
 
 export abstract class TeamRepository {
-  abstract list(): Promise<TeamRecord[]>;
+  abstract list(viewerId?: string): Promise<TeamRecord[]>;
   abstract findById(id: string): Promise<TeamRecord | null>;
   abstract create(data: { name: string; description?: string | null }): Promise<TeamRecord>;
   abstract update(id: string, data: { name?: string; description?: string | null }): Promise<TeamRecord>;

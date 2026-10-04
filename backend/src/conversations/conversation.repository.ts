@@ -34,6 +34,7 @@ export interface PendingSolutionSuggestionWithProject extends PendingSolutionSug
 }
 
 export abstract class ConversationRepository {
+  abstract findConversationMessages(conversationId: string, userId: string, limit?: number): Promise<MessageRecord[]>;
   abstract findDailyConversation(
     userId: string,
     startOfDay: Date,

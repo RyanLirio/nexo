@@ -29,8 +29,8 @@ export class ProjectsController {
 
   @Post()
   @UseGuards(AuthGuard)
-  create(@Body() body: unknown, @CurrentUser() user?: AuthenticatedUser) {
-    return this.projects.create(body, user?.id);
+  create(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
+    return this.projects.create(body, user.id);
   }
 
   @Get(':id')
@@ -75,13 +75,13 @@ export class ProjectsController {
   }
 
   @Post(':id/members')
-  addMember(@Param('id') id: string, @Body() body: unknown) {
-    return this.projects.addMember(id, body);
+  addMember(@Param('id') id: string, @Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
+    return this.projects.addMember(id, body, user.id);
   }
 
   @Delete(':id/members/:userId')
-  async removeMember(@Param('id') id: string, @Param('userId') userId: string) {
-    await this.projects.removeMember(id, userId);
+  async removeMember(@Param('id') id: string, @Param('userId') userId: string, @CurrentUser() user: AuthenticatedUser) {
+    await this.projects.removeMember(id, userId, user.id);
     return { ok: true };
   }
 }

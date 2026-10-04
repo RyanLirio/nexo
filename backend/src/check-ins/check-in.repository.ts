@@ -23,6 +23,7 @@ export interface CheckInRecord {
 }
 
 export abstract class CheckInRepository {
+  abstract messagesBelongToUser(messageIds: string[], userId: string): Promise<boolean>;
   abstract projectExists(projectId: string): Promise<boolean>;
   abstract isProjectMember(projectId: string, userId: string): Promise<boolean>;
   abstract listByProject(

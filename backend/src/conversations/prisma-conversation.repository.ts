@@ -114,6 +114,14 @@ export class PrismaConversationRepository extends ConversationRepository {
     }));
   }
 
+  async findConversationMessages(conversationId: string, userId: string, limit = 50): Promise<MessageRecord[]> {
+    const messages = await this.prisma.message.findMany({
+      where: { conversationId, conversation: { userId } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit,
+    });
+    return messages.reverse();
+  }
+
   async completeSuggestion(
     suggestion: PendingSolutionSuggestionRecord,
     status: 'ACCEPTED' | 'DECLINED',

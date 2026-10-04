@@ -8,6 +8,13 @@ export class PrismaCheckInRepository extends CheckInRepository {
     super();
   }
 
+  async messagesBelongToUser(messageIds: string[], userId: string): Promise<boolean> {
+    const count = await this.prisma.message.count({ where: {
+      id: { in: messageIds }, role: 'USER', senderId: userId, conversation: { userId },
+    } });
+    return count === new Set(messageIds).size;
+  }
+
   async projectExists(projectId: string): Promise<boolean> {
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
@@ -202,7 +209,10 @@ export class PrismaCheckInRepository extends CheckInRepository {
         ...(data.messageIds && data.messageIds.length > 0
           ? {
               messages: {
-                create: data.messageIds.map(messageId => ({ messageId })),
+                connectOrCreate: data.messageIds.map(messageId => ({
+                  where: { checkInId_messageId: { checkInId: id, messageId } },
+                  create: { messageId },
+                })),
               },
             }
           : {}),

@@ -35,7 +35,7 @@ export class GoogleAuthLibraryVerifier extends GoogleTokenVerifier {
       });
 
       const payload = ticket.getPayload();
-      if (!payload || !payload.sub || !payload.email) {
+      if (!payload || !payload.sub || !payload.email || payload.email_verified !== true) {
         throw new UnauthorizedException('Token do Google não contém as informações necessárias (sub/email).');
       }
 
@@ -45,11 +45,11 @@ export class GoogleAuthLibraryVerifier extends GoogleTokenVerifier {
         name: payload.name,
         picture: payload.picture,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof UnauthorizedException || err instanceof ServiceUnavailableException) {
         throw err;
       }
-      throw new UnauthorizedException(`Falha ao validar credencial do Google: ${err.message}`);
+      throw new UnauthorizedException('Não foi possível validar sua conta Google. Tente novamente.');
     }
   }
 }

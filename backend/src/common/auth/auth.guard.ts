@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, Injectable, Optional, UnauthorizedExcept
 import { Reflector } from '@nestjs/core';
 import * as jwt from 'jsonwebtoken';
 import { IS_PUBLIC_KEY } from './public.decorator';
+import { resolveJwtSecret } from './jwt-config';
 
 export interface AuthenticatedUser {
   id: string;
@@ -17,7 +18,7 @@ export class AuthGuard implements CanActivate {
     @Optional() private readonly reflector?: Reflector,
     @Optional() jwtSecret?: string,
   ) {
-    this.jwtSecret = jwtSecret || process.env.JWT_SECRET || 'nexo_default_jwt_secret_dev';
+    this.jwtSecret = resolveJwtSecret(jwtSecret);
   }
 
   canActivate(context: ExecutionContext): boolean {
@@ -49,15 +50,15 @@ export class AuthGuard implements CanActivate {
     if (typeof authHeader === 'string' && authHeader.trim().toLowerCase().startsWith('bearer ')) {
       const token = authHeader.trim().slice(7).trim();
       try {
-        const decoded = jwt.verify(token, this.jwtSecret) as { sub: string; email?: string };
-        if (decoded && decoded.sub) {
+        const decoded = jwt.verify(token, this.jwtSecret, { algorithms: ['HS256'] });
+        if (typeof decoded === 'object' && typeof decoded.sub === 'string' && decoded.sub.trim()) {
           req.user = {
             id: decoded.sub,
-            email: decoded.email,
+            email: typeof decoded.email === 'string' ? decoded.email : undefined,
           };
           return true;
         }
-      } catch (err: any) {
+      } catch {
         throw new UnauthorizedException('Token de autenticação inválido ou expirado.');
       }
     }

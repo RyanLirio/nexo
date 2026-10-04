@@ -7,6 +7,22 @@ import { fields, optionalText } from '../request-fields';
 export class CheckInsService {
   constructor(private readonly checkInRepo: CheckInRepository) {}
 
+  private resolveUser(body: Record<string, unknown>, currentUserId?: string): string {
+    const requestedId = optionalText(body, 'userId', 100);
+    if (currentUserId && requestedId && requestedId !== currentUserId) {
+      throw new ForbiddenException('O check-in deve pertencer ao usuário autenticado.');
+    }
+    const userId = currentUserId || requestedId;
+    if (!userId) throw new BadRequestException('Identificador de usuário ausente no check-in.');
+    return userId;
+  }
+
+  private async validateMessageOwnership(messageIds: string[] | undefined, userId: string, authenticated: boolean) {
+    if (authenticated && messageIds?.length && !(await this.checkInRepo.messagesBelongToUser(messageIds, userId))) {
+      throw new ForbiddenException('As mensagens devem pertencer à conversa do usuário autenticado.');
+    }
+  }
+
   async list(
     projectId: string,
     filter?: { userId?: string; startDate?: string | Date; endDate?: string | Date },
@@ -22,6 +38,11 @@ export class CheckInsService {
         }
       : undefined;
 
+    if (parsedFilter && (Object.values(parsedFilter).some(value => value instanceof Date && Number.isNaN(value.getTime()))
+      || (parsedFilter.startDate && parsedFilter.endDate && parsedFilter.startDate > parsedFilter.endDate))) {
+      throw new BadRequestException('Informe um intervalo de datas válido.');
+    }
+
     return this.checkInRepo.listByProject(projectId, parsedFilter);
   }
 
@@ -34,10 +55,7 @@ export class CheckInsService {
 
   async create(projectId: string, value: unknown, currentUserId?: string): Promise<CheckInRecord> {
     const body = fields(value);
-    const userId = optionalText(body, 'userId', 100) || currentUserId;
-    if (!userId) {
-      throw new BadRequestException('Identificador de usuário ausente no check-in.');
-    }
+    const userId = this.resolveUser(body, currentUserId);
 
     const validated = CheckIn.validateCreate({
       summary: optionalText(body, 'summary'),
@@ -54,6 +72,7 @@ export class CheckInsService {
       throw new ForbiddenException('O usuário informado não participa deste projeto.');
     }
 
+    await this.validateMessageOwnership(validated.messageIds, userId, Boolean(currentUserId));
     return this.checkInRepo.create({
       projectId,
       userId,
@@ -66,10 +85,7 @@ export class CheckInsService {
 
   async saveCheckIn(projectId: string, value: unknown, currentUserId?: string): Promise<CheckInRecord> {
     const body = fields(value);
-    const userId = optionalText(body, 'userId', 100) || currentUserId;
-    if (!userId) {
-      throw new BadRequestException('Identificador de usuário ausente no check-in.');
-    }
+    const userId = this.resolveUser(body, currentUserId);
 
     const exists = await this.checkInRepo.projectExists(projectId);
     if (!exists) throw new NotFoundException('Projeto não encontrado.');
@@ -86,6 +102,7 @@ export class CheckInsService {
       messageIds: body.messageIds,
     });
 
+    await this.validateMessageOwnership(validated.messageIds, userId, Boolean(currentUserId));
     const now = new Date();
     const startOfDay = new Date(now);
     startOfDay.setHours(0, 0, 0, 0);
@@ -96,8 +113,8 @@ export class CheckInsService {
     if (existing) {
       return this.checkInRepo.updateCheckIn(existing.id, {
         summary: validated.summary,
-        difficulties: validated.difficulties,
-        nextSteps: validated.nextSteps,
+        difficulties: validated.difficulties ?? existing.difficulties ?? null,
+        nextSteps: validated.nextSteps ?? existing.nextSteps ?? null,
         messageIds: validated.messageIds,
       });
     }

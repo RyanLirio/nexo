@@ -72,7 +72,10 @@ export class AiToolsService {
       }
 
       case 'get_recent_messages': {
-        const limit = typeof args.limit === 'number' && args.limit > 0 ? args.limit : 10;
+        const limit = args.limit === undefined ? 10 : args.limit;
+        if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+          throw new BadRequestException('Informe um limite inteiro de 1 a 50 mensagens.');
+        }
         const messages = await this.conversationRepo.findRecentMessages(userId, limit);
         return { messages };
       }

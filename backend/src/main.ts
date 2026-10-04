@@ -13,7 +13,7 @@ async function bootstrap() {
     origin: process.env.FRONTEND_URL ?? 'http://localhost:3000',
   });
   app.enableShutdownHooks();
-  await app.listen(port);
+  await app.listen(port, process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
   console.log(`Backend Nexo rodando em http://localhost:${port}`);
 }
 

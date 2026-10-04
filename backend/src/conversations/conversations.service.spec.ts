@@ -248,6 +248,7 @@ function createHarness(options: {
         isAdmin: async () => false,
         isTeamMember: async () => canReadKnowledge,
       } as unknown as AccessControlService),
+      { isAdmin: async () => false, isTeamMember: async () => true } as unknown as AccessControlService,
     ),
     createdCheckIns,
     updatedCheckIns,
@@ -963,4 +964,22 @@ test('múltiplos matches pedem projeto antes da resposta conversacional sem vaza
   assert.equal(harness.pendingSuggestions.size, 2);
   assert.equal(harness.extractionCallCount(), 1);
   assertNoSolution(response);
+});
+
+test('envios simultâneos do mesmo usuário são serializados e mantêm um CheckIn com dois vínculos', async () => {
+  const context = { projectId: 'finance', summary: 'Avanço inicial.', difficulties: 'Bloqueio relatado.',
+    nextSteps: 'Investigar.', classification: 'DIFFICULTY' as const, normalizedProblem: null };
+  const harness = createHarness({ projects: [{ id: 'finance', name: 'Financeiro' }],
+    extractions: [[context], [{ ...context, summary: 'Avanço adicional.', difficulties: null, nextSteps: null }]] });
+  await Promise.all([
+    harness.service.separateMessageByProject('user-1', 'Primeira mensagem.'),
+    harness.service.separateMessageByProject('user-1', 'Segunda mensagem.'),
+  ]);
+  assert.equal(harness.createdCheckIns.length, 1);
+  assert.equal(harness.updatedCheckIns.length, 1);
+  assert.deepEqual(harness.createdCheckIns[0].messageIds, ['message-1']);
+  assert.equal(harness.updatedCheckIns[0].data.messageId, 'message-2');
+  assert.equal(harness.updatedCheckIns[0].data.difficulties, 'Bloqueio relatado.');
+  assert.equal(harness.updatedCheckIns[0].data.nextSteps, 'Investigar.');
+  assert.deepEqual(harness.savedMessages.map(message => message.role), ['USER', 'ASSISTANT', 'USER', 'ASSISTANT']);
 });

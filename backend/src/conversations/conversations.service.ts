@@ -6,6 +6,7 @@ import { CheckInRepository } from '../check-ins/check-in.repository';
 import { SimilarTechnicalProblem, TechnicalProblemRecord } from '../technical-problems/technical-problem.repository';
 import { TechnicalProblemService } from '../technical-problems/technical-problem.service';
 import { findPendingProjectSelection, isStandaloneSolutionReply, parseSolutionReply } from './solution-reply';
+import { AccessControlService } from '../common/auth/access-control.service';
 
 export interface SolutionSuggestion {
   available: true;
@@ -41,6 +42,8 @@ export interface ConversationResponse {
 @Injectable()
 export class ConversationsService {
   private readonly logger = new Logger(ConversationsService.name);
+  // Protege a instância local do MVP; não substitui constraint/lock entre instâncias.
+  private readonly userRequests = new Map<string, Promise<void>>();
 
   constructor(
     private readonly projectRepo: ProjectRepository,
@@ -48,7 +51,24 @@ export class ConversationsService {
     private readonly conversationRepo: ConversationRepository,
     private readonly checkInRepo: CheckInRepository,
     private readonly technicalProblems: TechnicalProblemService,
+    private readonly accessControl: AccessControlService,
   ) {}
+
+  private dayBounds() {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { start, end };
+  }
+
+  async getCurrentHistory(userId: string) {
+    const { start, end } = this.dayBounds();
+    const conversation = await this.conversationRepo.findDailyConversation(userId, start, end);
+    if (!conversation) return { conversationId: null, messages: [] };
+    const messages = await this.conversationRepo.findConversationMessages(conversation.id, userId, 50);
+    return { conversationId: conversation.id, messages: messages.map(({ id, role, content, createdAt }) => ({ id, role, content, createdAt })) };
+  }
 
   private async searchSimilarProblems(userId: string, project: {
     projectId: string;
@@ -201,16 +221,24 @@ export class ConversationsService {
     userId: string,
     message: string,
   ): Promise<ConversationResponse> {
-    if (typeof message !== 'string' || !message.trim()) {
+    if (typeof message !== 'string' || !message.trim() || message.length > 10000) {
       throw new BadRequestException('Informe uma mensagem.');
     }
-    const now = new Date();
+    const previous = this.userRequests.get(userId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>(resolve => { release = resolve; });
+    this.userRequests.set(userId, current);
+    await previous;
+    try {
+      return await this.processMessage(userId, message);
+    } finally {
+      release();
+      if (this.userRequests.get(userId) === current) this.userRequests.delete(userId);
+    }
+  }
 
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(startOfDay);
-    endOfDay.setDate(endOfDay.getDate() + 1);
+  private async processMessage(userId: string, message: string): Promise<ConversationResponse> {
+    const { start: startOfDay, end: endOfDay } = this.dayBounds();
 
     let conversation =
       await this.conversationRepo.findDailyConversation(
@@ -237,6 +265,7 @@ export class ConversationsService {
     const activeProjects = await this.projectRepo.list({
       userId,
       status: 'ACTIVE',
+      ...((await this.accessControl.isAdmin(userId)) ? {} : { viewerId: userId }),
     });
 
     const projectsWithDailyContext = await Promise.all(
@@ -269,9 +298,12 @@ export class ConversationsService {
       activeProjects.map((project) => project.id),
     );
 
-    const projects = result.projects.filter((project) =>
-      validProjectIds.has(project.projectId),
-    );
+    const seenProjects = new Set<string>();
+    const projects = result.projects.filter((project) => {
+      if (seenProjects.has(project.projectId)) return false;
+      seenProjects.add(project.projectId);
+      return validProjectIds.has(project.projectId);
+    });
 
     const persistedProjects = await Promise.all(
       projects.map(async (project) => {

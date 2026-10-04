@@ -30,12 +30,13 @@ export class CheckInsController {
 
   @Post('projects/:projectId/check-ins')
   @UseGuards(AuthGuard)
-  create(
+  async create(
     @Param('projectId') projectId: string,
     @Body() body: unknown,
-    @CurrentUser() user?: AuthenticatedUser,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.checkIns.create(projectId, body, user?.id);
+    await this.projects.getById(projectId, user.id);
+    return this.toContext(await this.checkIns.create(projectId, body, user.id));
   }
 
   @Get('check-ins/:id')

@@ -157,3 +157,10 @@ test('homônimos pedem esclarecimento sem chamada IA; nome completo resolve', ()
   assert.ok(selectLeadershipProjects('como está Ryan?', [], ambiguous).clarification);
   assert.deepEqual(selectLeadershipProjects('como está Ryan Lirio?', [], ambiguous).memberIds, ['ryan']);
 });
+
+test('quais projetos eu lidero seleciona líder real, não todos os projetos da equipe', () => {
+  const projects = [{ ...directory[0], leaderId: 'marina' }, { ...directory[1], leaderId: 'other' }];
+  assert.deepEqual(selectLeadershipProjects('quais projetos eu lidero?', [], projects, 'marina').projects.map(project => project.id), ['finance']);
+  assert.deepEqual(selectLeadershipProjects('quais projetos eu lidero?', [], projects, 'other').projects.map(project => project.id), ['portal']);
+  assert.deepEqual(selectLeadershipProjects('quais projetos eu lidero?', [], projects).projects, []);
+});

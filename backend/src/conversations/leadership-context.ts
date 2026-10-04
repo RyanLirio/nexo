@@ -9,6 +9,7 @@ export interface ConversationIdentity {
 export interface LeadershipDirectoryProject {
   id: string;
   name: string;
+  leaderId?: string | null;
   members: Array<{ id: string; name: string }>;
 }
 
@@ -66,8 +67,12 @@ export function selectLeadershipProjects(
   message: string,
   history: RecentConversationMessage[],
   directory: LeadershipDirectoryProject[],
+  currentUserId?: string,
 ): { projects: LeadershipDirectoryProject[]; memberIds: string[]; clarification?: string } {
   const input = normalized(message);
+  if (/\bprojetos\b.*\b(eu lidero|lidero)\b/.test(input)) {
+    return { projects: directory.filter(project => project.leaderId === currentUserId && Boolean(currentUserId)), memberIds: [] };
+  }
   const explicitProjects = directory.filter(project => input.includes(normalized(project.name)));
   let members = namedMembers(message, directory);
   if (!members.length && !explicitProjects.length && /\b(ele|ela|dele|dela|e qual)\b/.test(input)) {

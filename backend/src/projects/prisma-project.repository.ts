@@ -1,11 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { ProjectMemberRecord, ProjectRecord, ProjectRepository } from './project.repository';
+import type { ProjectCreationTeam } from './chat-project-creation';
 
 @Injectable()
 export class PrismaProjectRepository extends ProjectRepository {
   constructor(private readonly prisma: PrismaService) {
     super();
+  }
+
+  async findCreationTeams(userId: string): Promise<ProjectCreationTeam[]> {
+    const teams = await this.prisma.team.findMany({
+      where: { members: { some: { userId } } },
+      select: { id: true, name: true, members: {
+        where: { user: { role: { in: ['LEADER', 'ADMIN'] } } },
+        select: { user: { select: { id: true, name: true, role: true } } },
+      } }, orderBy: { name: 'asc' },
+    });
+    return teams.map(team => ({ id: team.id, name: team.name,
+      leaders: team.members.map(({ user }) => ({ id: user.id, name: user.name, role: user.role as 'LEADER' | 'ADMIN' })),
+    }));
   }
 
   async findById(id: string): Promise<any | null> {

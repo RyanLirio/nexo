@@ -12,6 +12,7 @@ import { ProjectsService } from '../projects/projects.service';
 import { ProjectRecord } from '../projects/project.repository';
 import { ConversationIdentity, LeadershipProjectContext, leadershipCollectiveReply, selectLeadershipProjects } from './leadership-context';
 import { acknowledgeAllProjects, isClaimedLeadershipLookup } from './conversation-response';
+import { isProjectCreationTurn } from '../projects/chat-project-creation';
 
 export interface SolutionSuggestion {
   available: true;
@@ -80,11 +81,11 @@ export class ConversationsService {
   private async leadershipContext(user: ConversationIdentity, message: string, history: Array<Pick<MessageRecord, 'role' | 'content'>>) {
     const projects: ProjectRecord[] = await this.projectsService.list(undefined, user.id);
     const directory = await Promise.all(projects.map(async project => ({
-      id: project.id, name: project.name,
+      id: project.id, name: project.name, leaderId: project.leaderId,
       members: (await this.projectRepo.listMembers(project.id)).flatMap(member => member.user
         ? [{ id: member.user.id, name: member.user.name }] : []),
     })));
-    const selection = selectLeadershipProjects(message, history, directory);
+    const selection = selectLeadershipProjects(message, history, directory, user.id);
     if (selection.clarification) return { directory, clarification: selection.clarification, contexts: [], hasMoreProjects: false };
     const contexts: LeadershipProjectContext[] = [];
     for (const project of selection.projects.slice(0, 10)) {
@@ -350,8 +351,14 @@ export class ConversationsService {
       message,
       projectsWithDailyContext,
       history,
-      { authenticatedUser },
+      { authenticatedUser, projectCreationAllowed: isProjectCreationTurn(message, history) },
     );
+
+    if (result.projectCreation && isProjectCreationTurn(message, history)) {
+      const creation = await this.projectsService.createFromConversation(result.projectCreation, userId);
+      if (creation.project) await this.conversationRepo.linkProject(conversation.id, creation.project.id);
+      return this.respond(conversation.id, savedMessage.id, creation.reply);
+    }
 
     const validProjectIds = new Set(
       activeProjects.map((project) => project.id),

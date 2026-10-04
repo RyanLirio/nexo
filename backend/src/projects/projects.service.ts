@@ -3,13 +3,57 @@ import { ProjectMemberRecord, ProjectRecord, ProjectRepository } from './project
 import { Project } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
 import { AccessControlService } from '../common/auth/access-control.service';
+import { ChatProjectCreation, matchesCreationName, normalizedProjectName } from './chat-project-creation';
 
 @Injectable()
 export class ProjectsService {
+  private readonly creationRequests = new Map<string, Promise<void>>();
   constructor(
     private readonly projectRepo: ProjectRepository,
     private readonly accessControl: AccessControlService,
   ) {}
+
+  async creationTeams(userId: string) {
+    return this.projectRepo.findCreationTeams(userId);
+  }
+
+  async createFromConversation(input: ChatProjectCreation, userId: string): Promise<{ reply: string; project?: ProjectRecord }> {
+    const name = input.name?.trim();
+    const leaderName = input.leaderName?.trim();
+    const pending = 'Para criar o projeto, ';
+    // Os valores repetidos aqui mantêm o pedido visível no histórico recente, sem novo estado persistido.
+    if (!name || !leaderName) return { reply: `${pending}${name ? `já tenho o nome "${name}". Quem será o líder?` : leaderName ? `o líder informado é "${leaderName}". Qual será o nome?` : 'qual será o nome e quem será o líder?'}` };
+    const teams = await this.creationTeams(userId);
+    const leaders = [...new Map(teams.flatMap(team => team.leaders).filter(leader => matchesCreationName(leader.name, leaderName))
+      .map(leader => [leader.id, leader])).values()];
+    if (!leaders.length) return { reply: `${pending}não encontrei um líder válido chamado "${leaderName}" nas suas equipes. Você e o líder precisam compartilhar uma equipe; informe um líder LEADER ou ADMIN válido para "${name}".` };
+    if (leaders.length > 1) return { reply: `${pending}qual líder para "${name}": ${leaders.map(leader => leader.name).join(' ou ')}?` };
+    const leader = leaders[0];
+    const common = teams.filter(team => team.leaders.some(member => member.id === leader.id));
+    const selected = input.teamName ? common.filter(team => matchesCreationName(team.name, input.teamName!)) : common;
+    if (selected.length !== 1) return { reply: `${pending}em qual time deve ficar "${name}", com ${leader.name} como líder? As equipes em comum são: ${common.map(team => team.name).join(' ou ')}.` };
+    const team = selected[0];
+    // Revalidar vínculos e papel na operação existente. A IA fornece nomes, nunca IDs/identidade.
+    if (!(await this.accessControl.isTeamMember(userId, team.id))) throw new ForbiddenException('Você não tem acesso à equipe deste projeto.');
+    const key = `${team.id}:${normalizedProjectName(name)}`;
+    const previous = this.creationRequests.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>(resolve => { release = resolve; });
+    this.creationRequests.set(key, current);
+    await previous;
+    try {
+      const existing: ProjectRecord[] = await this.projectRepo.list({ teamId: team.id, viewerId: userId });
+      if (existing.some(project => normalizedProjectName(project.name) === normalizedProjectName(name))) {
+        return { reply: `Já existe um projeto chamado "${name}" nesse time. Não criei outro.` };
+      }
+      const project = await this.create({ teamId: team.id, name, description: input.description,
+        leaderId: leader.id, responsibleUserId: userId, createdBy: userId }, userId);
+      return { project, reply: `Projeto ${project.name} criado na equipe ${team.name}. Você ficou como responsável e ${leader.name} como líder.` };
+    } finally {
+      release();
+      if (this.creationRequests.get(key) === current) this.creationRequests.delete(key);
+    }
+  }
 
   private async loadProject(id: string) {
     const project = await this.projectRepo.findById(id);

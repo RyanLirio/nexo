@@ -42,6 +42,7 @@ model User {
   name                 String
   email                String               @unique
   role                 UserRole             @default(MEMBER)
+  isActive             Boolean              @default(true)
   googleSubject        String?              @unique
   avatarUrl            String?
   createdAt            DateTime             @default(now())

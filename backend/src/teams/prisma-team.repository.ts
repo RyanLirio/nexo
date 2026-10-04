@@ -10,6 +10,14 @@ export class PrismaTeamRepository extends TeamRepository {
 
   async list(): Promise<TeamRecord[]> {
     return this.prisma.team.findMany({
+      include: {
+        _count: {
+          select: {
+            members: true,
+            projects: true,
+          },
+        },
+      },
       orderBy: { name: 'asc' },
     });
   }
@@ -17,7 +25,28 @@ export class PrismaTeamRepository extends TeamRepository {
   async findById(id: string): Promise<TeamRecord | null> {
     return this.prisma.team.findUnique({
       where: { id },
+      include: {
+        _count: {
+          select: {
+            members: true,
+            projects: true,
+          },
+        },
+      },
     });
+  }
+
+  async countProjects(teamId: string): Promise<number> {
+    return this.prisma.project.count({
+      where: { teamId },
+    });
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.teamMember.deleteMany({ where: { teamId: id } }),
+      this.prisma.team.delete({ where: { id } }),
+    ]);
   }
 
   async create(data: { name: string; description?: string | null }): Promise<TeamRecord> {
@@ -43,7 +72,7 @@ export class PrismaTeamRepository extends TeamRepository {
     return this.prisma.teamMember.findMany({
       where: { teamId },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, role: true, isActive: true } },
       },
       orderBy: { joinedAt: 'asc' },
     });
@@ -55,23 +84,19 @@ export class PrismaTeamRepository extends TeamRepository {
         teamId_userId: { teamId, userId },
       },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, role: true, isActive: true } },
       },
     });
   }
 
   async addMember(teamId: string, userId: string): Promise<TeamMemberRecord> {
-    return this.prisma.teamMember.upsert({
-      where: {
-        teamId_userId: { teamId, userId },
-      },
-      create: {
+    return this.prisma.teamMember.create({
+      data: {
         teamId,
         userId,
       },
-      update: {},
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, role: true, isActive: true } },
       },
     });
   }

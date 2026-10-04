@@ -54,6 +54,10 @@ export class AuthService {
       throw new ForbiddenException('Acesso restrito: usuário não cadastrado na plataforma.');
     }
 
+    if (user.isActive === false) {
+      throw new ForbiddenException('Acesso bloqueado: usuário inativo. Entre em contato com o administrador.');
+    }
+
     await this.userRepository.updateGoogleAuth(user.id, {
       googleSubject: payload.sub,
       avatarUrl: payload.picture,
@@ -86,6 +90,10 @@ export class AuthService {
     const user = await this.userRepository.findByEmail(email.trim().toLowerCase());
     if (!user) {
       throw new NotFoundException(`Usuário com e-mail "${email}" não encontrado.`);
+    }
+
+    if (user.isActive === false) {
+      throw new ForbiddenException('Acesso bloqueado: usuário inativo. Entre em contato com o administrador.');
     }
 
     const token = this.generateToken(user.id, user.email);

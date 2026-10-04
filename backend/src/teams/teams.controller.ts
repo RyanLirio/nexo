@@ -28,6 +28,13 @@ export class TeamsController {
     return this.teamsService.update(id, body);
   }
 
+  @Roles('ADMIN')
+  @Delete(':id')
+  async delete(@Param('id') id: string) {
+    await this.teamsService.delete(id);
+    return { ok: true };
+  }
+
   @Get(':id/members')
   async listMembers(@Param('id') id: string) {
     return this.teamsService.listMembers(id);

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
+import { Shield } from 'lucide-react';
 import { AuthSession, clearAuthSession, readAuthSession } from '../lib/auth-session';
 
 type Theme = 'dark' | 'light';
@@ -10,7 +11,14 @@ type Theme = 'dark' | 'light';
 const THEME_KEY = 'nexo.theme';
 
 function isProtectedPath(pathname: string): boolean {
-  return pathname === '/colaborador' || pathname.startsWith('/colaborador/') || pathname === '/lider' || pathname.startsWith('/projetos/');
+  return (
+    pathname === '/colaborador' ||
+    pathname.startsWith('/colaborador/') ||
+    pathname === '/lider' ||
+    pathname.startsWith('/projetos/') ||
+    pathname === '/admin' ||
+    pathname.startsWith('/admin')
+  );
 }
 
 function initials(name: string): string {
@@ -54,6 +62,12 @@ export default function AppChrome({ children }: { children: ReactNode }) {
       return;
     }
 
+    if (pathname.startsWith('/admin') && currentSession?.user.role !== 'ADMIN') {
+      setReady(false);
+      router.replace('/colaborador');
+      return;
+    }
+
     setReady(true);
   }, [pathname, protectedPath, router]);
 
@@ -91,6 +105,16 @@ export default function AppChrome({ children }: { children: ReactNode }) {
         >
           <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
         </button>
+        {session?.user.role === 'ADMIN' && (
+          <Link
+            href="/admin"
+            className="admin-badge-button"
+            aria-label="Acessar painel administrativo"
+          >
+            <Shield size={14} aria-hidden="true" />
+            <span>Painel Administrativo</span>
+          </Link>
+        )}
         {session ? (
           <button className="profile-link profile-button" type="button" onClick={logout} aria-label={`Sair da conta de ${session.user.name}`}>
             <span className="profile-avatar">{initials(session.user.name)}</span>

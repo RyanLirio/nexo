@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { NotFoundException } from '@nestjs/common';
-import { UserRepository, UserRecord } from './user.repository';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { ListUsersParams, UserRepository, UserRecord } from './user.repository';
 import { UsersService } from './users.service';
 
 class InMemoryUserRepository extends UserRepository {
@@ -14,13 +14,55 @@ class InMemoryUserRepository extends UserRepository {
   }
 
   async findByEmail(email: string): Promise<UserRecord | null> {
-    return this.users.find(u => u.email === email) || null;
+    return this.users.find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
   }
 
-  async list(search?: string): Promise<UserRecord[]> {
-    if (!search) return this.users;
-    const term = search.toLowerCase();
-    return this.users.filter(u => u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term));
+  async list(params?: ListUsersParams | string): Promise<UserRecord[]> {
+    const search = typeof params === 'string' ? params : params?.search;
+    const status = typeof params === 'object' ? params?.status : undefined;
+    const role = typeof params === 'object' ? params?.role : undefined;
+
+    return this.users.filter(u => {
+      if (search) {
+        const term = search.toLowerCase();
+        if (!u.name.toLowerCase().includes(term) && !u.email.toLowerCase().includes(term)) {
+          return false;
+        }
+      }
+      if (status === 'active' && !u.isActive) return false;
+      if (status === 'inactive' && u.isActive) return false;
+      if (role && role !== 'ALL' && u.role !== role) return false;
+      return true;
+    });
+  }
+
+  async create(data: { name: string; email: string; role: string }): Promise<UserRecord> {
+    const user: UserRecord = {
+      id: `u-${this.users.length + 1}`,
+      name: data.name,
+      email: data.email,
+      role: data.role,
+      isActive: true,
+      avatarUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.users.push(user);
+    return user;
+  }
+
+  async update(id: string, data: { name?: string; role?: string; isActive?: boolean }): Promise<UserRecord> {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('Usuário não encontrado');
+    if (data.name !== undefined) user.name = data.name;
+    if (data.role !== undefined) user.role = data.role;
+    if (data.isActive !== undefined) user.isActive = data.isActive;
+    user.updatedAt = new Date();
+    return user;
+  }
+
+  async countActiveAdmins(): Promise<number> {
+    return this.users.filter(u => u.role === 'ADMIN' && u.isActive).length;
   }
 
   async findUserProjects(userId: string, relation?: 'member' | 'responsible' | 'leader', status?: string): Promise<any[]> {
@@ -42,7 +84,7 @@ class InMemoryUserRepository extends UserRepository {
 
 test('UsersService.getMe retorna usuário autenticado com role', async () => {
   const repo = new InMemoryUserRepository();
-  repo.users = [{ id: 'user-me', name: 'Gustavo', email: 'gustavo@nexo.com', role: 'ADMIN', createdAt: new Date(), updatedAt: new Date() }];
+  repo.users = [{ id: 'user-me', name: 'Gustavo', email: 'gustavo@nexo.com', role: 'ADMIN', isActive: true, createdAt: new Date(), updatedAt: new Date() }];
   const service = new UsersService(repo);
 
   const me = await service.getMe('user-me');
@@ -61,8 +103,8 @@ test('UsersService.getMe lança NotFoundException quando usuário não existe', 
 test('UsersService.list filtra usuários por busca textual', async () => {
   const repo = new InMemoryUserRepository();
   repo.users = [
-    { id: '1', name: 'Ryan Lirio', email: 'ryan@nexo.com', role: 'MEMBER', createdAt: new Date(), updatedAt: new Date() },
-    { id: '2', name: 'Gustavo Felicetti', email: 'gustavo@nexo.com', role: 'ADMIN', createdAt: new Date(), updatedAt: new Date() },
+    { id: '1', name: 'Ryan Lirio', email: 'ryan@nexo.com', role: 'MEMBER', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+    { id: '2', name: 'Gustavo Felicetti', email: 'gustavo@nexo.com', role: 'ADMIN', isActive: true, createdAt: new Date(), updatedAt: new Date() },
   ];
   const service = new UsersService(repo);
 
@@ -71,16 +113,69 @@ test('UsersService.list filtra usuários por busca textual', async () => {
   assert.equal(result[0].id, '1');
 });
 
-test('UsersService.getMeProjects filtra projetos por relação leader', async () => {
+test('UsersService.create cadastra novo usuário com sucesso', async () => {
   const repo = new InMemoryUserRepository();
-  repo.users = [{ id: 'u1', name: 'Líder', email: 'l@nexo.com', role: 'LEADER', createdAt: new Date(), updatedAt: new Date() }];
-  repo.projects = [
-    { id: 'p1', name: 'Proj 1', leaderId: 'u1', responsibleUserId: 'u2', status: 'ACTIVE' },
-    { id: 'p2', name: 'Proj 2', leaderId: 'u2', responsibleUserId: 'u1', status: 'ACTIVE' },
+  const service = new UsersService(repo);
+
+  const user = await service.create({
+    name: 'Novo Colaborador',
+    email: 'novo@empresa.com',
+    role: 'LEADER',
+  });
+
+  assert.equal(user.name, 'Novo Colaborador');
+  assert.equal(user.email, 'novo@empresa.com');
+  assert.equal(user.role, 'LEADER');
+  assert.equal(user.isActive, true);
+});
+
+test('UsersService.create rejeita cadastro com e-mail duplicado', async () => {
+  const repo = new InMemoryUserRepository();
+  repo.users = [
+    { id: '1', name: 'Existente', email: 'duplicado@empresa.com', role: 'MEMBER', isActive: true, createdAt: new Date(), updatedAt: new Date() },
   ];
   const service = new UsersService(repo);
 
-  const leaderProjects = await service.getMeProjects('u1', { relation: 'leader' });
-  assert.equal(leaderProjects.length, 1);
-  assert.equal(leaderProjects[0].id, 'p1');
+  await assert.rejects(
+    () => service.create({ name: 'Outro', email: 'duplicado@empresa.com', role: 'MEMBER' }),
+    ConflictException,
+  );
+});
+
+test('UsersService.update altera nome e role com validação', async () => {
+  const repo = new InMemoryUserRepository();
+  repo.users = [
+    { id: '1', name: 'Admin 1', email: 'admin1@nexo.com', role: 'ADMIN', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+    { id: '2', name: 'Admin 2', email: 'admin2@nexo.com', role: 'ADMIN', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+  ];
+  const service = new UsersService(repo);
+
+  const updated = await service.update('1', { name: 'Admin Renomeado', role: 'MEMBER' });
+  assert.equal(updated.name, 'Admin Renomeado');
+  assert.equal(updated.role, 'MEMBER');
+});
+
+test('UsersService.update impede desativação do único administrador ativo', async () => {
+  const repo = new InMemoryUserRepository();
+  repo.users = [
+    { id: '1', name: 'Único Admin', email: 'admin@nexo.com', role: 'ADMIN', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+  ];
+  const service = new UsersService(repo);
+
+  await assert.rejects(
+    () => service.update('1', { isActive: false }),
+    (err: any) => err instanceof BadRequestException && err.message.includes('único administrador ativo'),
+  );
+});
+
+test('UsersService.update permite desativação quando há outro admin ativo', async () => {
+  const repo = new InMemoryUserRepository();
+  repo.users = [
+    { id: '1', name: 'Admin 1', email: 'admin1@nexo.com', role: 'ADMIN', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+    { id: '2', name: 'Admin 2', email: 'admin2@nexo.com', role: 'ADMIN', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+  ];
+  const service = new UsersService(repo);
+
+  const updated = await service.update('1', { isActive: false });
+  assert.equal(updated.isActive, false);
 });

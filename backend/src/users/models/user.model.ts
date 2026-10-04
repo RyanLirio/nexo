@@ -12,6 +12,7 @@ export class User {
   readonly name: string;
   readonly email: string;
   readonly role: UserRole;
+  readonly isActive: boolean;
   readonly googleSubject: string | null;
   readonly avatarUrl: string | null;
   readonly createdAt: Date;
@@ -22,6 +23,7 @@ export class User {
     name: string;
     email: string;
     role?: UserRole;
+    isActive?: boolean;
     googleSubject?: string | null;
     avatarUrl?: string | null;
     createdAt: Date;
@@ -31,6 +33,7 @@ export class User {
     this.name = props.name;
     this.email = props.email;
     this.role = props.role ?? UserRole.MEMBER;
+    this.isActive = props.isActive ?? true;
     this.googleSubject = props.googleSubject ?? null;
     this.avatarUrl = props.avatarUrl ?? null;
     this.createdAt = props.createdAt;

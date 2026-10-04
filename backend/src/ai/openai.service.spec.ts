@@ -99,3 +99,22 @@ test('problema técnico sem normalizedProblem não segue para embedding', async 
   }] });
   await assert.rejects(() => service.extractProjectContexts('O token expirou.', []), /não normalizou/);
 });
+
+test('regressão: dificuldade de autenticação sem causa mantém DIFFICULTY apesar de avanço anterior', async () => {
+  const message = 'Estou com dificuldade na autenticação do Protheus, mas ainda não sei a causa.';
+  const context = { projectId: 'finance', summary: 'Testes concluídos; autenticação bloqueada.',
+    difficulties: 'Dificuldade na autenticação do Protheus, sem causa identificada.', nextSteps: null,
+    classification: 'DIFFICULTY', normalizedProblem: null };
+  const { service, requests } = harness({ assistantResponse: 'Entendi. Apareceu algum erro específico?', projects: [context] });
+  const result = await service.extractProjectContexts(message, [{ id: 'finance', name: 'Automação Financeira',
+    description: 'Integração com o Protheus.', currentSummary: 'Testes concluídos.' }]);
+  assert.deepEqual(result.projects, [context]);
+  assert.equal(requests.length, 1, 'Não deve acrescentar chamada de classificação.');
+  assert.equal(JSON.parse(requests[0].input).message, message);
+  for (const instruction of ['relato explícito de dificuldade nunca é NO_PROBLEM',
+    'sem erro/comportamento técnico específico, é DIFFICULTY',
+    'O histórico de avanços não substitui nem anula',
+    'A API retorna erro 500 e ainda não sei a causa.']) {
+    assert.ok(requests[0].instructions.includes(instruction), `Instrução ausente: ${instruction}`);
+  }
+});

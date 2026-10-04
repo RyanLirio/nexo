@@ -11,14 +11,27 @@ const TechnicalClassification = z.enum([
 
 const technicalClassificationInstructions = `
 NO_PROBLEM:
-Não existe dificuldade ou problema técnico relatado.
+Não existe dificuldade ou problema técnico relatado na mensagem atual.
+Use esta categoria SOMENTE na ausência de dificuldade, bloqueio ou problema relatado.
+Um relato explícito de dificuldade nunca é NO_PROBLEM, mesmo sem causa conhecida.
 
 DIFFICULTY:
 O usuário relata dificuldade, bloqueio ou impedimento, mas o problema técnico concreto ainda não está identificado.
 Não invente causa técnica.
+Não conseguir autenticar, não conseguir avançar ou não saber a causa, sem erro/comportamento técnico específico, é DIFFICULTY.
+Mencionar o nome de um sistema ou de uma atividade não identifica, por si só, o problema técnico concreto.
 
 TECHNICAL_PROBLEM:
 Existe sintoma técnico concreto, comportamento técnico identificável ou causa técnica conhecida.
+Por exemplo: um código de erro específico, um token expirando antes da requisição ou um timeout identificado.
+Uma causa desconhecida não impede TECHNICAL_PROBLEM se o sintoma concreto já estiver identificado.
+
+Exemplos de classificação da mensagem atual:
+- "Finalizei os testes." → NO_PROBLEM.
+- "Estou com dificuldade na autenticação do sistema, mas ainda não sei a causa." → DIFFICULTY.
+- "A API retorna erro 500 e ainda não sei a causa." → TECHNICAL_PROBLEM.
+- "O token expira antes da requisição." → TECHNICAL_PROBLEM.
+O histórico de avanços não substitui nem anula a dificuldade explicitamente relatada agora.
 `;
 
 const TechnicalMessageAnalysis = z.object({
@@ -163,6 +176,7 @@ Para DIFFICULTY ou NO_PROBLEM, normalizedProblem deve ser null.
       ${technicalClassificationInstructions}
       - Para classification, considere somente as informações da mensagem atual que pertencem ao projeto avaliado.
       - Não use informações de outro projeto nem o contexto anterior para determinar classification.
+      - Antes de concluir, confira a coerência: uma dificuldade explícita da mensagem atual não pode coexistir com NO_PROBLEM. Classifique como DIFFICULTY quando ela ainda não trouxer sintoma técnico concreto.
       - Quando classification for TECHNICAL_PROBLEM, normalizedProblem deve preservar fielmente o significado técnico da mensagem em uma frase natural.
       - Escreva normalizedProblem como uma descrição técnica útil para recuperação semântica, não como um resumo genérico do relato.
       - Preserve, quando presentes, o sintoma técnico, a tecnologia, o componente ou sistema afetado, a causa conhecida e o contexto necessário para distinguir o problema.

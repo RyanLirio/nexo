@@ -10,7 +10,8 @@ import { AccessControlService } from '../common/auth/access-control.service';
 import { UserRepository } from '../users/user.repository';
 import { ProjectsService } from '../projects/projects.service';
 import { ProjectRecord } from '../projects/project.repository';
-import { ConversationIdentity, LeadershipProjectContext, selectLeadershipProjects } from './leadership-context';
+import { ConversationIdentity, LeadershipProjectContext, leadershipCollectiveReply, selectLeadershipProjects } from './leadership-context';
+import { acknowledgeAllProjects, isClaimedLeadershipLookup } from './conversation-response';
 
 export interface SolutionSuggestion {
   available: true;
@@ -305,6 +306,8 @@ export class ConversationsService {
     if (authenticatedUser.role !== 'MEMBER') {
       const leadership = await this.leadershipContext(authenticatedUser, message, history);
       if (leadership.clarification) return this.respond(conversation.id, savedMessage.id, leadership.clarification);
+      const collective = leadershipCollectiveReply(message, leadership.contexts, leadership.hasMoreProjects);
+      if (collective) return this.respond(conversation.id, savedMessage.id, collective);
       const result = await this.openAIService.extractProjectContexts(message, leadership.directory, history, {
         authenticatedUser, leadershipContext: leadership.contexts, hasMoreProjects: leadership.hasMoreProjects,
       });
@@ -316,6 +319,11 @@ export class ConversationsService {
       status: 'ACTIVE',
       ...((await this.accessControl.isAdmin(userId)) ? {} : { viewerId: userId }),
     });
+
+    if (isClaimedLeadershipLookup(message, activeProjects.map(project => project.name))) {
+      return this.respond(conversation.id, savedMessage.id,
+        'Sua conta de colaborador não tem acesso à visão de acompanhamento de outros colaboradores.');
+    }
 
     const projectsWithDailyContext = await Promise.all(
       activeProjects.map(async (project) => {
@@ -424,6 +432,7 @@ export class ConversationsService {
       : suggestionCount === 1
         ? 'Encontrei um problema parecido. Quer ver a solução?'
         : result.assistantResponse;
-    return this.respond(conversation.id, savedMessage.id, content, persistedProjects);
+    return this.respond(conversation.id, savedMessage.id,
+      acknowledgeAllProjects(content, projects, activeProjects), persistedProjects);
   }
 }

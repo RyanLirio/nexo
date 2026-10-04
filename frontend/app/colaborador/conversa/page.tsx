@@ -3,20 +3,14 @@
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AuthSession, clearAuthSession, readAuthSession } from '../../../lib/auth-session';
-import { ChatMessage, isConversationResponse, parseHistory, requestError } from '../../../lib/conversation-data';
+import { ChatMessage, conversationWelcome, isConversationResponse, parseHistory, requestError } from '../../../lib/conversation-data';
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
 
 export default function ConversationPage() {
   const router = useRouter();
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      author: 'nexo',
-      text: 'Conte como foi seu trabalho. Você pode falar de mais de um projeto na mesma mensagem.',
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -27,6 +21,7 @@ export default function ConversationPage() {
   useEffect(() => {
     const current = readAuthSession();
     setSession(current);
+    setMessages([conversationWelcome(current?.user.role)]);
     if (!current) { setHistoryLoading(false); return; }
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 15_000);

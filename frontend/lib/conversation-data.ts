@@ -1,4 +1,14 @@
+import type { UserRole } from './auth-session';
+
 export interface ChatMessage { id: string; author: 'user' | 'nexo'; text: string }
+export function conversationWelcome(role: UserRole = 'MEMBER'): ChatMessage {
+  const text = role === 'MEMBER'
+    ? 'Conte como foi seu trabalho hoje. Posso organizar avanços, dificuldades e próximos passos.'
+    : role === 'LEADER'
+      ? 'Posso te ajudar a consultar projetos, colaboradores, dificuldades e próximos passos da equipe.'
+      : 'Posso te ajudar a consultar projetos, colaboradores, dificuldades e próximos passos no seu escopo administrativo.';
+  return { id: 'welcome', author: 'nexo', text };
+}
 interface StoredMessage { id: string; role: 'USER' | 'ASSISTANT'; content: string }
 export interface ConversationResponse { messageId: string; assistantMessage: StoredMessage }
 

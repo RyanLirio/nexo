@@ -29,6 +29,31 @@ function normalized(text: string): string {
   return ` ${text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
 }
 
+export function leadershipCollectiveReply(message: string, contexts: LeadershipProjectContext[], hasMoreProjects = false): string | null {
+  const input = normalized(message);
+  const field = /\bquem\b.*\bdificuldades?\b/.test(input) ? 'difficulties'
+    : /\bproximos passos\b.*\b(equipe|colaboradores|meus projetos)\b/.test(input) ? 'nextSteps' : null;
+  if (!field) return null;
+  if (!contexts.length) return 'Não há contexto acessível para essa consulta.';
+  const people = new Map<string, { name: string; items: string[] }>();
+  for (const project of contexts) {
+    for (const member of project.members) {
+      const value = member.latestUpdate?.[field]?.trim();
+      if (!value) continue;
+      const person = people.get(member.id) ?? { name: member.name, items: [] };
+      person.items.push(`- ${project.name}: ${value}`);
+      people.set(member.id, person);
+    }
+  }
+  const count = people.size;
+  const introduction = field === 'difficulties'
+    ? count ? `Há ${count} ${count === 1 ? 'colaborador com dificuldades registradas' : 'colaboradores com dificuldades registradas'}:` : 'Não há dificuldades registradas nos projetos consultados.'
+    : count ? 'Próximos passos registrados por pessoa e projeto:' : 'Não há próximos passos registrados nos projetos consultados.';
+  const details = [...people.values()].map(person => `${person.name}:\n${person.items.join('\n')}`).join('\n\n');
+  const scope = hasMoreProjects ? '\n\nEste resultado é um recorte de até 10 projetos acessíveis.' : '';
+  return `${introduction}${details ? `\n\n${details}` : ''}${scope}`;
+}
+
 function namedMembers(text: string, directory: LeadershipDirectoryProject[]) {
   const input = normalized(text);
   const members = [...new Map(directory.flatMap(project => project.members).map(member => [member.id, member])).values()];

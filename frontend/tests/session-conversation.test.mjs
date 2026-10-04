@@ -1,9 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isAuthSession, dashboardFor, navigationFor, readAuthSession, saveAuthSession, clearAuthSession, SESSION_CHANGED } from '../lib/auth-session.ts';
-import { isConversationResponse, parseHistory, requestError } from '../lib/conversation-data.ts';
+import { conversationWelcome, isConversationResponse, parseHistory, requestError } from '../lib/conversation-data.ts';
 const token = (exp = Math.floor(Date.now() / 1000) + 3600) => `header.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.signature`;
 const session = (role = 'MEMBER') => ({ accessToken: token(), user: { id: 'fixture', name: 'Pessoa fictícia', email: 'fixture@example.invalid', role } });
+test('welcome MEMBER convida ao registro do próprio trabalho', () => {
+  const welcome = conversationWelcome('MEMBER');
+  assert.equal(welcome.author, 'nexo');
+  assert.match(welcome.text, /trabalho hoje/);
+  for (const field of ['avanços', 'dificuldades', 'próximos passos']) assert.ok(welcome.text.includes(field));
+});
+for (const role of ['LEADER', 'ADMIN']) {
+  test(`welcome ${role} convida a consultas sem pedir registro pessoal`, () => {
+    const welcome = conversationWelcome(role);
+    assert.match(welcome.text, /consultar projetos, colaboradores/);
+    assert.ok(!welcome.text.includes('Conte como foi seu trabalho'));
+    if (role === 'ADMIN') assert.match(welcome.text, /escopo administrativo/);
+  });
+}
 test('sessão malformada, papel desconhecido e JWT expirado não quebram rotas protegidas', () => {
   for (const value of [null, {}, { accessToken: 'x', user: {} }, session('ROOT'), { ...session(), accessToken: token(1) }]) assert.equal(isAuthSession(value), false);
   assert.equal(isAuthSession(session()), true);

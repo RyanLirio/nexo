@@ -1053,12 +1053,30 @@ test('problema técnico sem match usa resposta contextual sem criar sugestão ou
 test('múltiplos matches pedem projeto antes da resposta conversacional sem vazar soluções', async () => {
   const harness = multipleSuggestionsHarness();
   const response = await harness.service.separateMessageByProject('user-1', 'Falha técnica nos dois projetos.');
-  assert.equal(response.assistantMessage.content,
-    'Tenho soluções sugeridas para mais de um projeto. Para qual projeto você quer ver a solução?');
+  assert.ok(response.assistantMessage.content.endsWith(
+    'Tenho soluções sugeridas para mais de um projeto. Para qual projeto você quer ver a solução?'));
+  for (const name of ['Automação Financeira', 'Portal de Notas']) assert.ok(response.assistantMessage.content.includes(name));
   assert.equal(response.projects.length, 2);
   assert.equal(harness.pendingSuggestions.size, 2);
   assert.equal(harness.extractionCallCount(), 1);
   assertNoSolution(response);
+});
+
+test('mensagem multi-projeto reconhece os dois mesmo quando provider responde somente pelo Portal', async () => {
+  const harness = createHarness({
+    projects: [{ id: 'finance', name: 'Automação Financeira' }, { id: 'portal', name: 'Portal de Notas' }],
+    extractions: [[
+      { projectId: 'finance', summary: 'Testes concluídos.', difficulties: null, nextSteps: null, classification: 'NO_PROBLEM', normalizedProblem: null },
+      { projectId: 'portal', summary: 'Dificuldade na importação.', difficulties: 'Importação bloqueada.', nextSteps: 'Investigar arquivo.', classification: 'DIFFICULTY', normalizedProblem: null },
+    ]], assistantResponses: ['No Portal de Notas há dificuldade na importação.'],
+  });
+  const result = await harness.service.separateMessageByProject('user-1', 'Na Automação Financeira finalizei os testes. No Portal de Notas estou com dificuldade na importação e meu próximo passo é investigar o arquivo.');
+  assert.match(result.assistantMessage.content, /Automação Financeira.*Testes concluídos/);
+  assert.match(result.assistantMessage.content, /Portal de Notas/);
+  assert.deepEqual(harness.createdCheckIns.map(item => item.projectId), ['finance', 'portal']);
+  assert.equal(harness.createdCheckIns[0].difficulties, null);
+  assert.equal(harness.createdCheckIns[1].nextSteps, 'Investigar arquivo.');
+  assert.equal(harness.extractionCallCount(), 1);
 });
 
 test('envios simultâneos do mesmo usuário são serializados e mantêm um CheckIn com dois vínculos', async () => {

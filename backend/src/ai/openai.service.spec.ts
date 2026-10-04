@@ -5,7 +5,7 @@ import { OpenAIService } from './openai.service';
 interface ExtractionRequest {
   model: string;
   instructions: string;
-  input: string;
+  input: Array<{ role: string; content: string }>;
   text: { format: { name: string; schema: { required: string[] } } };
 }
 
@@ -22,6 +22,46 @@ function harness(output: unknown) {
   return { service, requests };
 }
 
+test('caso 13 pede desambiguação antes da IA escolher ou gerar um contexto de projeto', async () => {
+  const { service, requests } = harness({ assistantResponse: 'Escolha incorreta.', projects: [] });
+  const result = await service.extractProjectContexts('na automação financeir', [
+    { id: 'finance-a', name: 'Automação Financeira A' },
+    { id: 'finance-b', name: 'Automação Financeira B' },
+  ], [{ role: 'USER', content: 'Estou com dificuldade na importação.' },
+    { role: 'ASSISTANT', content: 'Em qual projeto isso aconteceu?' }]);
+  assert.deepEqual(result.projects, []);
+  assert.match(result.assistantResponse, /Automação Financeira A.*Automação Financeira B\?/);
+  assert.equal(requests.length, 0);
+});
+
+test('prefixo único e projeto completo explícito continuam usando a extração existente', async () => {
+  const { service, requests } = harness({ assistantResponse: 'Entendi.', projects: [] });
+  await service.extractProjectContexts('na automação financeir', [{ id: 'finance', name: 'Automação Financeira' }]);
+  await service.extractProjectContexts('na Automação Financeira B', [
+    { id: 'finance-a', name: 'Automação Financeira A' }, { id: 'finance-b', name: 'Automação Financeira B' },
+  ]);
+  assert.equal(requests.length, 2);
+});
+
+test('histórico limitado a 10 mensagens mantém papéis, ordem e mensagem atual separada em uma chamada', async () => {
+  const { service, requests } = harness({ assistantResponse: 'Entendi.', projects: [] });
+  const history = Array.from({ length: 14 }, (_, index) => ({
+    role: index % 2 === 0 ? 'USER' as const : 'ASSISTANT' as const,
+    content: `Turno ${index}`,
+  }));
+  await service.extractProjectContexts('Agora meu próximo passo é validar o retorno.', [], history);
+  assert.equal(requests.length, 1);
+  assert.deepEqual(requests[0].input.slice(1, -1), history.slice(-10).map(({ role, content }) => ({ role: role.toLowerCase(), content })));
+  assert.equal(requests[0].input.at(-1)?.content, 'CURRENT MESSAGE\n{"message":"Agora meu próximo passo é validar o retorno."}');
+  for (const rule of ['CURRENT MESSAGE', 'USER é a fonte de verdade', 'ASSISTANT serve apenas',
+    'projeto explicitamente citado agora', 'resposta direta à pergunta imediatamente anterior',
+    'projeto inequivocamente ativo', 'peça desambiguação', 'nesse segundo',
+    'ao financeiro', 'acabei de falar acima', 'pequenos erros de digitação',
+    'nem copie uma classification histórica', 'nunca identifica fatos de outro']) {
+    assert.ok(requests[0].instructions.includes(rule), `Regra ausente: ${rule}`);
+  }
+});
+
 test('uma única análise estruturada retorna resposta natural mesmo com projects vazio', async () => {
   const { service, requests } = harness({ assistantResponse: '  Oi! Como foi seu trabalho hoje?  ', projects: [] });
   assert.deepEqual(await service.extractProjectContexts('oi', []), {
@@ -30,8 +70,11 @@ test('uma única análise estruturada retorna resposta natural mesmo com project
   assert.equal(requests.length, 1);
   assert.equal(requests[0].model, 'gpt-5.4-mini');
   assert.equal(requests[0].text.format.name, 'project_context_extraction');
-  assert.deepEqual(requests[0].text.format.schema.required, ['assistantResponse', 'projects']);
-  assert.deepEqual(JSON.parse(requests[0].input), { message: 'oi', activeProjects: [] });
+  assert.deepEqual(requests[0].text.format.schema.required, ['projects', 'assistantResponse']);
+  assert.deepEqual(requests[0].input, [
+    { role: 'user', content: 'PROJECT DATA\n{"activeProjects":[]}' },
+    { role: 'user', content: 'CURRENT MESSAGE\n{"message":"oi"}' },
+  ]);
 });
 
 test('prompt define escopo de trabalho, recusa tarefas genéricas e separa conversa da persistência', async () => {
@@ -66,7 +109,7 @@ test('campos estruturados, classificação por projeto e normalização da Fase 
   assert.deepEqual(result.projects[0], contexts[0]);
   assert.deepEqual(result.projects[1], { ...contexts[1], normalizedProblem: 'A API retorna erro 500 ao enviar o payload.' });
   assert.equal(result.assistantResponse, 'Entendi os dois contextos.');
-  assert.deepEqual(JSON.parse(requests[0].input).activeProjects[0], { ...projects[0], description: null });
+  assert.deepEqual(JSON.parse(requests[0].input[0].content.split('\n')[1]).activeProjects[0], { ...projects[0], description: null });
   assert.equal(requests.length, 1);
 });
 
@@ -110,7 +153,7 @@ test('regressão: dificuldade de autenticação sem causa mantém DIFFICULTY ape
     description: 'Integração com o Protheus.', currentSummary: 'Testes concluídos.' }]);
   assert.deepEqual(result.projects, [context]);
   assert.equal(requests.length, 1, 'Não deve acrescentar chamada de classificação.');
-  assert.equal(JSON.parse(requests[0].input).message, message);
+  assert.equal(JSON.parse(requests[0].input.at(-1)!.content.split('\n')[1]).message, message);
   for (const instruction of ['relato explícito de dificuldade nunca é NO_PROBLEM',
     'sem erro/comportamento técnico específico, é DIFFICULTY',
     'O histórico de avanços não substitui nem anula',

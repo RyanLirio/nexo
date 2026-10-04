@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ProjectRepository } from '../projects/project.repository';
-import { OpenAIService } from '../ai/openai.service';
+import { OpenAIService, RECENT_CONVERSATION_LIMIT } from '../ai/openai.service';
 import { ConversationRepository, MessageRecord, PendingSolutionSuggestionRecord } from './conversation.repository';
 import { CheckInRepository } from '../check-ins/check-in.repository';
 import { SimilarTechnicalProblem, TechnicalProblemRecord } from '../technical-problems/technical-problem.repository';
@@ -292,6 +292,14 @@ export class ConversationsService {
     const result = await this.openAIService.extractProjectContexts(
       message,
       projectsWithDailyContext,
+      (await this.conversationRepo.findConversationMessages(
+        conversation.id,
+        userId,
+        RECENT_CONVERSATION_LIMIT + 1,
+      ))
+        .filter((previous) => previous.id !== savedMessage.id)
+        .slice(-RECENT_CONVERSATION_LIMIT)
+        .map(({ role, content }) => ({ role, content })),
     );
 
     const validProjectIds = new Set(

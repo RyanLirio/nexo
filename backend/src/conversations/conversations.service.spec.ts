@@ -83,6 +83,8 @@ function createHarness(options: {
   const updatedCheckIns: UpdatedCheckIn[] = [];
   const linkedProjects: string[] = [];
   const projectContextsSentToAi: ProjectContextInput[] = [];
+  const historiesSentToAi: Array<Parameters<OpenAIService['extractProjectContexts']>[2]> = [];
+  const historyQueries: Array<{ conversationId: string; userId: string; limit: number }> = [];
   const embeddingInputs: string[] = [];
   const savedMessages: MessageRecord[] = [];
   const pendingSuggestions = new Map<string, PendingSolutionSuggestionRecord>();
@@ -115,9 +117,11 @@ function createHarness(options: {
     extractProjectContexts: async (
       _message: string,
       projects: ProjectContextInput,
+      recentMessages: Parameters<OpenAIService['extractProjectContexts']>[2],
     ) => {
       extractionCalls += 1;
       projectContextsSentToAi.push(projects);
+      historiesSentToAi.push(recentMessages);
       const extraction = options.extractions[extractionIndex];
       const assistantResponse = options.assistantResponses?.[extractionIndex]
         ?? 'Como está o trabalho nos seus projetos?';
@@ -133,6 +137,10 @@ function createHarness(options: {
   } as unknown as OpenAIService;
 
   const conversationRepo = {
+    findConversationMessages: async (conversationId: string, userId: string, limit: number) => {
+      historyQueries.push({ conversationId, userId, limit });
+      return savedMessages.filter((item) => item.conversationId === conversationId).slice(-limit);
+    },
     findDailyConversation: async (userId: string) => ({
       id: userId === 'user-1' ? 'conversation-1' : 'conversation-2',
       userId,
@@ -254,6 +262,8 @@ function createHarness(options: {
     updatedCheckIns,
     linkedProjects,
     projectContextsSentToAi,
+    historiesSentToAi,
+    historyQueries,
     embeddingInputs,
     semanticSearches,
     savedMessages,
@@ -264,6 +274,87 @@ function createHarness(options: {
     extractionCallCount: () => extractionCalls,
   };
 }
+
+test('caso 13 no fluxo de Conversation não atualiza CheckIn nem dispara busca semântica', async () => {
+  const harness = createHarness({ projects: [{ id: 'finance-a', name: 'Automação Financeira A' },
+    { id: 'finance-b', name: 'Automação Financeira B' }], extractions: [],
+    existingCheckIns: [checkInRecord('finance-a'), checkInRecord('finance-b')] });
+  Reflect.set(harness.service, 'openAIService', new OpenAIService());
+  const result = await harness.service.separateMessageByProject('user-1', 'na automação financeir');
+  assert.deepEqual(result.projects, []);
+  assert.match(result.assistantMessage.content, /Automação Financeira A.*Automação Financeira B\?/);
+  assert.equal(harness.createdCheckIns.length, 0);
+  assert.equal(harness.updatedCheckIns.length, 0);
+  assert.equal(harness.linkedProjects.length, 0);
+  assert.equal(harness.semanticSearches.length, 0);
+  assert.equal(harness.embeddingInputs.length, 0);
+  assert.deepEqual(harness.savedMessages.map(item => item.role), ['USER', 'ASSISTANT']);
+});
+
+test('conversa envia somente 10 mensagens anteriores da conversa diária autenticada, sem duplicar atual', async () => {
+  const harness = createHarness({ projects: [], extractions: Array.from({ length: 8 }, () => []),
+    assistantResponses: Array.from({ length: 8 }, (_, i) => `Resposta ${i}`) });
+  for (let index = 0; index < 7; index += 1) {
+    await harness.service.separateMessageByProject('user-1', `Mensagem ${index}`);
+  }
+  const expected = harness.savedMessages.slice(-10).map(({ role, content }) => ({ role, content }));
+  await harness.service.separateMessageByProject('user-1', 'Atual');
+  assert.deepEqual(harness.historiesSentToAi.at(-1), expected);
+  assert.deepEqual(harness.historyQueries.at(-1), { conversationId: 'conversation-1', userId: 'user-1', limit: 11 });
+  assert.deepEqual(harness.historiesSentToAi[0], []);
+  assert.equal(harness.extractionCallCount(), 8);
+});
+
+test('histórico enviado à análise não mistura conversas de usuários diferentes', async () => {
+  const harness = createHarness({ projects: [], extractions: [[], [], []] });
+  await harness.service.separateMessageByProject('user-1', 'Contexto privado primeiro usuário.');
+  await harness.service.separateMessageByProject('user-2', 'Contexto privado segundo usuário.');
+  await harness.service.separateMessageByProject('user-1', 'Continuação.');
+  assert.deepEqual(harness.historiesSentToAi[1], []);
+  assert.deepEqual(harness.historiesSentToAi[2], [
+    { role: 'USER', content: 'Contexto privado primeiro usuário.' },
+    { role: 'ASSISTANT', content: 'Como está o trabalho nos seus projetos?' },
+  ]);
+});
+
+test('follow-up da dificuldade mantém CheckIn, próximo passo e executa busca técnica no mesmo projeto', async () => {
+  const base = { projectId: 'finance', summary: 'Testes concluídos.', difficulties: null, nextSteps: null,
+    classification: 'NO_PROBLEM' as const, normalizedProblem: null };
+  const harness = createHarness({ projects: [{ id: 'finance', name: 'Automação Financeira' }],
+    extractions: [[base], [{ ...base, nextSteps: 'Validar retorno bancário.' }],
+      [{ ...base, difficulties: 'Dificuldade na autenticação.', classification: 'DIFFICULTY' }],
+      [{ ...technicalContext, projectId: 'finance' }]], similarProblems: [knownCandidate] });
+  const messages = ['Hoje finalizei os testes da Automação Financeira.',
+    'Agora meu próximo passo é validar o retorno bancário.',
+    'Estou com dificuldade na autenticação do Protheus, mas ainda não sei a causa.',
+    'Descobri que o token OAuth está expirando antes da chamada chegar ao Protheus.'];
+  for (const message of messages) await harness.service.separateMessageByProject('user-1', message);
+  assert.equal(harness.createdCheckIns.length, 1);
+  assert.equal(harness.updatedCheckIns.length, 3);
+  assert.equal(harness.semanticSearches.length, 1);
+  assert.equal(harness.extractionCallCount(), 4);
+  assert.equal(harness.updatedCheckIns.at(-1)?.data.nextSteps, 'Validar retorno bancário.');
+  assert.deepEqual(harness.updatedCheckIns.map(item => item.data.messageId), ['message-2', 'message-3', 'message-4']);
+  assert.deepEqual(harness.historiesSentToAi[3]?.filter(item => item.role === 'USER').map(item => item.content), messages.slice(0, 3));
+});
+
+test('referência ao segundo projeto seguida de financeiro não mistura atualizações dos CheckIns', async () => {
+  const finance = { projectId: 'finance', summary: 'Testes concluídos.', difficulties: null, nextSteps: null,
+    classification: 'NO_PROBLEM' as const, normalizedProblem: null };
+  const portal = { ...finance, projectId: 'portal', summary: 'Dificuldade na importação.',
+    difficulties: 'Não consegue importar.', classification: 'DIFFICULTY' as const };
+  const harness = createHarness({ projects: [{ id: 'finance', name: 'Automação Financeira' },
+    { id: 'portal', name: 'Portal de Notas' }], extractions: [[finance, portal],
+    [{ ...portal, difficulties: 'Dificuldade na importação sem causa conhecida.' }],
+    [{ ...finance, nextSteps: 'Validar retorno.' }]] });
+  await harness.service.separateMessageByProject('user-1', 'Na Automação Financeira finalizei os testes. No Portal de Notas estou com dificuldade na importação.');
+  await harness.service.separateMessageByProject('user-1', 'nesse segundo ainda não sei a causa.');
+  await harness.service.separateMessageByProject('user-1', 'no financeiro meu próximo passo é validar o retorno.');
+  assert.deepEqual(harness.updatedCheckIns.map(item => item.id), ['check-in-portal', 'check-in-finance']);
+  assert.equal(harness.updatedCheckIns[1].data.difficulties, null);
+  assert.equal(harness.updatedCheckIns[0].data.nextSteps, null);
+  assert.equal(harness.historiesSentToAi[2]?.at(-2)?.content, 'nesse segundo ainda não sei a causa.');
+});
 
 test('cria CheckIn com avanço, dificuldade e próximo passo', async () => {
   const harness = createHarness({

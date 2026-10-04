@@ -335,9 +335,12 @@ export class ConversationsService {
       }),
     );
 
-    const content = persistedProjects.some((project) => project.solutionSuggestion)
-      ? 'Encontrei um problema parecido. Quer ver a solução?'
-      : 'Recebi sua mensagem.';
+    const suggestionCount = persistedProjects.filter((project) => project.solutionSuggestion).length;
+    const content = suggestionCount > 1
+      ? 'Tenho soluções sugeridas para mais de um projeto. Para qual projeto você quer ver a solução?'
+      : suggestionCount === 1
+        ? 'Encontrei um problema parecido. Quer ver a solução?'
+        : result.assistantResponse;
     return this.respond(conversation.id, savedMessage.id, content, persistedProjects);
   }
 }

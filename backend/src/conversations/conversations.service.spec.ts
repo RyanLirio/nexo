@@ -68,6 +68,7 @@ function checkInRecord(
 function createHarness(options: {
   projects: TestProject[];
   extractions: ExtractedProjectContext[][];
+  assistantResponses?: string[];
   existingCheckIns?: CheckInRecord[];
   similarProblems?: SimilarTechnicalProblem[];
   similarProblemsByText?: Record<string, SimilarTechnicalProblem[]>;
@@ -118,8 +119,10 @@ function createHarness(options: {
       extractionCalls += 1;
       projectContextsSentToAi.push(projects);
       const extraction = options.extractions[extractionIndex];
+      const assistantResponse = options.assistantResponses?.[extractionIndex]
+        ?? 'Como está o trabalho nos seus projetos?';
       extractionIndex += 1;
-      return { projects: extraction };
+      return { projects: extraction, assistantResponse };
     },
     generateEmbedding: async (text: string) => {
       embeddingInputs.push(text);
@@ -601,6 +604,7 @@ function solutionHarness() {
   return createHarness({
     projects: [{ id: 'finance', name: 'Financeiro' }],
     similarProblems: [knownCandidate], extractions: [[technicalContext], []],
+    assistantResponses: ['Entendi o problema. Você identificou mais algum sintoma?'],
   });
 }
 
@@ -736,6 +740,7 @@ function multipleSuggestionsHarness(projects: TestProject[] = [
       { ...technicalContext, projectId: projects[0].id },
       { ...technicalContext, projectId: projects[1].id },
     ], []],
+    assistantResponses: ['Entendi os relatos dos dois projetos.'],
   });
 }
 
@@ -864,4 +869,98 @@ test('mensagem vazia é rejeitada antes de persistência ou IA', async () => {
   const harness = solutionHarness();
   await assert.rejects(() => harness.service.separateMessageByProject('user-1', '   '), /Informe uma mensagem/);
   assert.equal(harness.savedMessages.length, 0);
+});
+
+for (const [message, assistantResponse] of [
+  ['oi', 'Oi! Como foi o trabalho nos seus projetos hoje?'],
+  ['tudo certo?', 'Tudo certo! Teve algum avanço ou dificuldade no trabalho hoje?'],
+  ['como você pode me ajudar?', 'Posso acompanhar avanços, registrar dificuldades, organizar próximos passos e procurar soluções compartilhadas. Quer contar sobre um projeto?'],
+  ['Hoje finalizei os testes.', 'Boa! Em qual projeto você finalizou os testes?'],
+  ['faz um código Python pra mim', 'Não desenvolvo código diretamente. Me conta o objetivo ou a dificuldade no seu projeto para organizarmos o contexto.'],
+  ['qual a capital da França?', 'Meu foco é o contexto de trabalho. Tem algum projeto ou atividade que você queira me contar?'],
+  ['escreve uma redação', 'Não escrevo redações. Posso ajudar a registrar o contexto e as dificuldades dos seus projetos.'],
+  ['me ajuda a montar uma viagem', 'Meu foco são seus projetos e atividades de trabalho. Tem algum avanço ou dificuldade para registrar?'],
+] as const) {
+  test(`conversa sem projeto usa a resposta da análise e não cria CheckIn: ${message}`, async () => {
+    const harness = createHarness({
+      projects: [{ id: 'finance', name: 'Automação Financeira' }],
+      extractions: [[]], assistantResponses: [assistantResponse],
+    });
+    const response = await harness.service.separateMessageByProject('user-1', message);
+    assert.equal(response.assistantMessage.content, assistantResponse);
+    assert.notEqual(response.assistantMessage.content, 'Recebi sua mensagem.');
+    assert.deepEqual(response.projects, []);
+    assert.equal(harness.createdCheckIns.length, 0);
+    assert.equal(harness.updatedCheckIns.length, 0);
+    assert.equal(harness.linkedProjects.length, 0);
+    assert.equal(harness.embeddingInputs.length, 0);
+    assert.equal(harness.extractionCallCount(), 1);
+    assert.deepEqual(harness.savedMessages.map(({ role, content }) => ({ role, content })), [
+      { role: 'USER', content: message }, { role: 'ASSISTANT', content: assistantResponse },
+    ]);
+  });
+}
+
+test('atualização contextual persiste apenas campos extraídos, não a pergunta do assistente', async () => {
+  const assistantResponse = 'Boa, você finalizou os testes na Automação Financeira. Ficou alguma dificuldade?';
+  const harness = createHarness({
+    projects: [{ id: 'finance', name: 'Automação Financeira' }],
+    extractions: [[{
+      projectId: 'finance', summary: 'Testes dos boletos finalizados.',
+      difficulties: null, nextSteps: 'Revisar a documentação.',
+      classification: 'NO_PROBLEM', normalizedProblem: null,
+    }]], assistantResponses: [assistantResponse],
+  });
+  const response = await harness.service.separateMessageByProject('user-1',
+    'Na Automação Financeira finalizei os testes dos boletos. Meu próximo passo é revisar a documentação.');
+  assert.equal(response.assistantMessage.content, assistantResponse);
+  assert.equal(harness.createdCheckIns[0].summary, 'Testes dos boletos finalizados.');
+  assert.equal(harness.createdCheckIns[0].difficulties, null);
+  assert.equal(harness.createdCheckIns[0].nextSteps, 'Revisar a documentação.');
+  assert.deepEqual(harness.createdCheckIns[0].messageIds, ['message-1']);
+  assert.equal(JSON.stringify(harness.createdCheckIns).includes(assistantResponse), false);
+});
+
+test('dificuldade permanece sem causa inventada e usa reconhecimento conversacional', async () => {
+  const assistantResponse = 'Entendi a dificuldade para autenticar no Protheus. Você já identificou a causa ou ainda está investigando?';
+  const harness = createHarness({
+    projects: [{ id: 'finance', name: 'Automação Financeira' }],
+    extractions: [[{
+      projectId: 'finance', summary: 'Dificuldade na autenticação com o Protheus.',
+      difficulties: 'Ainda não consegue autenticar e não sabe a causa.', nextSteps: null,
+      classification: 'DIFFICULTY', normalizedProblem: null,
+    }]], assistantResponses: [assistantResponse],
+  });
+  const response = await harness.service.separateMessageByProject('user-1',
+    'Na Automação Financeira não consigo autenticar no Protheus e ainda não sei a causa.');
+  assert.equal(response.assistantMessage.content, assistantResponse);
+  assert.equal(response.projects[0].classification, 'DIFFICULTY');
+  assert.equal(response.projects[0].normalizedProblem, null);
+  assert.equal(harness.createdCheckIns[0].nextSteps, null);
+  assert.equal(harness.semanticSearches.length, 0);
+});
+
+test('problema técnico sem match usa resposta contextual sem criar sugestão ou solução', async () => {
+  const assistantResponse = 'Entendi que o token OAuth expira antes da requisição ao Protheus.';
+  const harness = createHarness({
+    projects: [{ id: 'finance', name: 'Automação Financeira' }],
+    extractions: [[technicalContext]], assistantResponses: [assistantResponse],
+  });
+  const response = await harness.service.separateMessageByProject('user-1', knownCandidate.problem);
+  assert.equal(response.assistantMessage.content, assistantResponse);
+  assert.equal(harness.semanticSearches.length, 1);
+  assert.equal(response.projects[0].solutionSuggestion, null);
+  assert.equal(harness.pendingSuggestions.size, 0);
+  assertNoSolution(response);
+});
+
+test('múltiplos matches pedem projeto antes da resposta conversacional sem vazar soluções', async () => {
+  const harness = multipleSuggestionsHarness();
+  const response = await harness.service.separateMessageByProject('user-1', 'Falha técnica nos dois projetos.');
+  assert.equal(response.assistantMessage.content,
+    'Tenho soluções sugeridas para mais de um projeto. Para qual projeto você quer ver a solução?');
+  assert.equal(response.projects.length, 2);
+  assert.equal(harness.pendingSuggestions.size, 2);
+  assert.equal(harness.extractionCallCount(), 1);
+  assertNoSolution(response);
 });

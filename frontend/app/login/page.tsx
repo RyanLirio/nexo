@@ -120,6 +120,31 @@ export default function LoginPage() {
 
         {error && <p className="login-error" role="alert">{error}</p>}
         <p className="login-note">O acesso é permitido somente para contas previamente cadastradas no Nexo.</p>
+
+        {process.env.NODE_ENV !== 'production' && (
+          <div style={{ marginTop: '16px', borderTop: '1px dashed var(--line)', paddingTop: '16px', textAlign: 'center' }}>
+            <button
+              type="button"
+              className="login-secondary-button"
+              style={{ width: '100%', fontSize: '13px', fontWeight: 600 }}
+              onClick={() => {
+                saveAuthSession({
+                  accessToken: 'dev-token-admin',
+                  user: {
+                    id: 'demo-gustavo',
+                    name: 'Gustavo Felicetti',
+                    email: 'gustavokfelicetti@gmail.com',
+                    role: 'ADMIN',
+                    avatarUrl: null,
+                  },
+                });
+                router.push('/admin');
+              }}
+            >
+              Entrar como Gustavo Felicetti (Admin Dev) ↗
+            </button>
+          </div>
+        )}
       </section>
       <p className="login-footer">Nexo · Programação IV</p>
     </main>

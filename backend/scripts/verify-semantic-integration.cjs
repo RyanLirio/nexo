@@ -143,6 +143,17 @@ function assertSharedMatches(results, knownId, allowForeign = false) {
   assert.ok(results.every((candidate) => !('problemEmbedding' in candidate)));
 }
 
+function assertConversationalReply(body) {
+  const content = body.assistantMessage?.content;
+  assert.equal(body.assistantMessage?.role, 'ASSISTANT');
+  assert.equal(typeof content, 'string');
+  assert.ok(content.trim().length > 0 && content.length <= 900, 'Resposta ausente ou excessivamente longa.');
+  assert.notEqual(content.trim(), 'Recebi sua mensagem.');
+  assert.ok(!/projectId|normalizedProblem|NO_PROBLEM|TECHNICAL_PROBLEM|DIFFICULTY|"projects"/.test(content), 'Resposta exibiu detalhes internos.');
+  assert.ok((content.match(/\?/g) ?? []).length <= 1, 'Resposta virou interrogatório.');
+  return content;
+}
+
 async function verifyHttp(app, knownId) {
   const prisma = app.get(PrismaService);
   const conversations = app.get(ConversationRepository);
@@ -182,16 +193,122 @@ async function verifyHttp(app, knownId) {
   const privateList = await request(`/api/v1/technical-problems/api/v1/projects/${ids.knowledge}/technical-problems`, ids.leader);
   assert.ok(!privateList.body.some((candidate) => candidate.id === ids.privateProblem), 'Lista legada vazou solução privada.');
 
+  stage = 'Conversation natural HTTP / OpenAI real / casual e capacidades';
+  for (const message of ['opa, tudo certo?', 'você pode me ajudar de alguma forma?']) {
+    const before = await prisma.checkIn.count({ where: { userId: ids.member } });
+    const result = await request('/api/v1/conversations/message', ids.member, { message });
+    assert.equal(result.status, 201);
+    const content = assertConversationalReply(result.body);
+    assert.deepEqual(result.body.projects, [], 'Conversa casual inventou projeto/CheckIn.');
+    assert.match(content, /trabalho|projeto|avanço|dificuldade|atividade/i);
+    assert.equal(await prisma.checkIn.count({ where: { userId: ids.member } }), before);
+    const saved = await prisma.message.findUnique({ where: { id: result.body.assistantMessage.id } });
+    assert.equal(saved.content, content);
+    console.log(`OpenAI real — ${JSON.stringify(message)} → ${JSON.stringify(content)}`);
+  }
+
+  stage = 'Conversation natural HTTP / atualização e dificuldade reais';
+  const update = await request('/api/v1/conversations/message', ids.member, {
+    message: 'Hoje finalizei os testes da Automação Financeira.',
+  });
+  assert.equal(update.status, 201);
+  const updateContent = assertConversationalReply(update.body);
+  assert.deepEqual(update.body.projects.map((entry) => entry.projectId), [ids.finance]);
+  assert.equal(update.body.projects[0].classification, 'NO_PROBLEM');
+  assert.equal(update.body.projects[0].difficulties, null);
+  assert.equal(update.body.projects[0].nextSteps, null);
+  assert.match(updateContent, /teste|financeira/i);
+  console.log(`OpenAI real — atualização → ${JSON.stringify(updateContent)}`);
+  let unknownCause = await request('/api/v1/conversations/message', ids.member, {
+    message: 'Estou com dificuldade na autenticação do Protheus, mas ainda não sei a causa.',
+  });
+  assert.equal(unknownCause.status, 201);
+  let difficultyContent = assertConversationalReply(unknownCause.body);
+  console.log(`OpenAI real — dificuldade sem projeto explícito → ${JSON.stringify(difficultyContent)}; projetos identificados=${unknownCause.body.projects.length}.`);
+  if (unknownCause.body.projects.length === 0) {
+    assert.match(difficultyContent, /projeto/i, 'Sem projeto, a resposta deve pedir contexto antes de registrar.');
+    unknownCause = await request('/api/v1/conversations/message', ids.member, {
+      message: 'Na Automação Financeira, estou com dificuldade na autenticação do Protheus, mas ainda não sei a causa.',
+    });
+    assert.equal(unknownCause.status, 201);
+    difficultyContent = assertConversationalReply(unknownCause.body);
+    console.log(`OpenAI real — follow-up com projeto explícito → ${JSON.stringify(difficultyContent)}`);
+  }
+  assert.deepEqual(unknownCause.body.projects.map((entry) => entry.projectId), [ids.finance]);
+  assert.equal(unknownCause.body.projects[0].classification, 'DIFFICULTY');
+  assert.equal(unknownCause.body.projects[0].normalizedProblem, null);
+  assert.equal(unknownCause.body.projects[0].solutionSuggestion, null);
+  assert.ok(!/token|certificado|expir|senha incorreta/i.test(difficultyContent), 'Resposta inventou causa técnica.');
+  console.log(`OpenAI real — dificuldade sem causa → ${JSON.stringify(difficultyContent)}`);
+
+  stage = 'Conversation natural HTTP / fora do escopo';
+  for (const [message, forbiddenAnswer] of [
+    ['faz um código Python para automatizar uma planilha', /```|import pandas|import openpyxl|def \w+\(|pip install/i],
+    ['qual a capital da França?', /\bParis\b/i],
+    ['escreve uma redação', /introdução:|desenvolvimento:|conclusão:/i],
+    ['me ajuda a montar uma viagem', /dia 1:|reserve um|roteiro de viagem/i],
+  ]) {
+    const before = await prisma.checkIn.count({ where: { userId: ids.member } });
+    const result = await request('/api/v1/conversations/message', ids.member, { message });
+    assert.equal(result.status, 201);
+    const content = assertConversationalReply(result.body);
+    assert.deepEqual(result.body.projects, [], 'Pedido genérico inventou atualização de projeto.');
+    assert.match(content, /trabalho|projeto|dificuldade|atividade/i);
+    assert.ok(!forbiddenAnswer.test(content), 'Nexo executou tarefa genérica fora do escopo.');
+    assert.equal(await prisma.checkIn.count({ where: { userId: ids.member } }), before);
+    console.log(`OpenAI real — ${JSON.stringify(message)} → ${JSON.stringify(content)}`);
+  }
+
+  stage = 'Conversation natural HTTP / isolamento entre dois projetos';
+  const separated = await request('/api/v1/conversations/message', ids.member, {
+    message: 'Na Automação Financeira revisei o relatório bancário. Meu próximo passo nesse projeto é validar os totais bancários. Na Base Técnica finalizei o guia de instalação do ambiente. Meu próximo passo na Base Técnica é publicar esse guia.',
+  });
+  assert.equal(separated.status, 201);
+  assertConversationalReply(separated.body);
+  assert.deepEqual(separated.body.projects.map((entry) => entry.projectId).sort(), [ids.finance, ids.knowledge].sort());
+  const financeContext = separated.body.projects.find((entry) => entry.projectId === ids.finance);
+  const knowledgeContext = separated.body.projects.find((entry) => entry.projectId === ids.knowledge);
+  assert.ok(separated.body.projects.every((entry) => entry.classification === 'NO_PROBLEM' && entry.normalizedProblem === null));
+  assert.match(financeContext.nextSteps, /bancári/i);
+  assert.ok(!/guia|instalação/i.test(financeContext.summary + financeContext.nextSteps));
+  assert.match(knowledgeContext.nextSteps, /guia/i);
+  assert.ok(!/bancári|Protheus/i.test(knowledgeContext.summary + knowledgeContext.nextSteps));
+  console.log('OpenAI real — dois projetos isolados, próximos passos distintos e classificação da mensagem atual preservada.');
+
+  stage = 'Conversation natural HTTP / problema técnico e prioridade de solução';
+  let shortTechnical = await request('/api/v1/conversations/message', ids.member, {
+    message: 'O token OAuth expira antes da chamada ao Protheus.',
+  });
+  assert.equal(shortTechnical.status, 201);
+  if (shortTechnical.body.projects.length === 0) {
+    assert.match(assertConversationalReply(shortTechnical.body), /projeto/i);
+    console.log('OpenAI real — problema sem projeto explícito pediu identificação; validando follow-up explícito.');
+    shortTechnical = await request('/api/v1/conversations/message', ids.member, {
+      message: 'Na Automação Financeira, o token OAuth expira antes da chamada ao Protheus.',
+    });
+    assert.equal(shortTechnical.status, 201);
+  }
+  const shortContext = shortTechnical.body.projects.find((entry) => entry.projectId === ids.finance);
+  assert.equal(shortContext?.classification, 'TECHNICAL_PROBLEM');
+  assert.ok(shortContext.normalizedProblem?.trim());
+  assert.equal(shortContext.solutionSuggestion?.technicalProblemId, knownId);
+  assert.ok(shortContext.solutionSuggestion.similarity >= 0.78);
+  assert.equal(shortTechnical.body.assistantMessage.content, 'Encontrei um problema parecido. Quer ver a solução?');
+  assert.ok(!JSON.stringify(shortTechnical.body).includes(solution), 'Solução apareceu antes do aceite.');
+  console.log(`OpenAI real — problema técnico → ${JSON.stringify(shortTechnical.body.assistantMessage.content)}; normalizedProblem=${shortContext.normalizedProblem}; similarity=${shortContext.solutionSuggestion.similarity.toFixed(6)}.`);
+
   stage = 'Conversation HTTP / conversa comum e dificuldade sem causa';
   const normal = await request('/api/v1/conversations/message', ids.member, {
     message: 'Na Base Técnica, terminei a documentação dos testes.',
   });
   assert.equal(normal.status, 201);
+  assertConversationalReply(normal.body);
   assert.equal(normal.body.projects.find((entry) => entry.projectId === ids.knowledge)?.classification, 'NO_PROBLEM');
   const difficulty = await request('/api/v1/conversations/message', ids.member, {
     message: 'Na Base Técnica, estou com dificuldade para avançar e ainda não identifiquei o problema. Meu próximo passo é investigar o bloqueio.',
   });
   assert.equal(difficulty.status, 201);
+  assertConversationalReply(difficulty.body);
   const difficultyContext = difficulty.body.projects.find((entry) => entry.projectId === ids.knowledge);
   assert.equal(difficultyContext?.classification, 'DIFFICULTY');
   assert.equal(difficultyContext.normalizedProblem, null);

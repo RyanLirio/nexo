@@ -9,6 +9,7 @@ import {
   dashboardFor,
   readAuthSession,
   saveAuthSession,
+  isAuthSession,
 } from '../../lib/auth-session';
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
@@ -27,6 +28,7 @@ export default function LoginPage() {
   const router = useRouter();
   const buttonContainer = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
+  const authenticating = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [existingSession, setExistingSession] = useState<AuthSession | null>(null);
@@ -36,6 +38,8 @@ export default function LoginPage() {
   }, []);
 
   const authenticate = useCallback(async ({ credential }: GoogleCredentialResponse) => {
+    if (authenticating.current) return;
+    authenticating.current = true;
     setLoading(true);
     setError(null);
 
@@ -44,19 +48,22 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken: credential }),
+        signal: AbortSignal.timeout(30_000),
       });
-      const body = await response.json().catch(() => null) as AuthSession | null;
+      const body: unknown = await response.json().catch(() => null);
 
-      if (!response.ok || !body?.accessToken || !body.user) {
-        throw new Error(messageFromResponse(body));
+      if (!response.ok || !isAuthSession(body)) {
+        throw new Error(response.status >= 500 ? 'Não foi possível entrar agora. Tente novamente em instantes.' : messageFromResponse(body));
       }
 
       saveAuthSession(body);
       router.push(dashboardFor(body.user.role));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível entrar. Tente novamente.');
+      setError(cause instanceof DOMException && cause.name === 'TimeoutError' ? 'O login demorou para responder. Tente novamente.'
+        : cause instanceof TypeError ? 'Não foi possível conectar ao Nexo. Tente novamente.' : cause instanceof Error ? cause.message : 'Não foi possível entrar. Tente novamente.');
     } finally {
       setLoading(false);
+      authenticating.current = false;
     }
   }, [router]);
 
@@ -82,11 +89,16 @@ export default function LoginPage() {
     });
   }, [authenticate]);
 
+  useEffect(() => { if (!existingSession) initializeGoogle(); }, [existingSession, initializeGoogle]);
+
   function continueSession() {
-    if (existingSession) router.push(dashboardFor(existingSession.user.role));
+    const current = readAuthSession();
+    if (current) router.push(dashboardFor(current.user.role));
+    else { setExistingSession(null); setError('Sua sessão expirou. Entre novamente.'); }
   }
 
   function changeAccount() {
+    initialized.current = false;
     clearAuthSession();
     setExistingSession(null);
   }
@@ -115,7 +127,7 @@ export default function LoginPage() {
             {loading && <p className="login-status" role="status">Validando sua conta…</p>}
           </>
         ) : (
-          <p className="login-error" role="alert">Login Google ainda não configurado. Defina <code>NEXT_PUBLIC_GOOGLE_CLIENT_ID</code>.</p>
+          <p className="login-error" role="alert">O login Google ainda não está disponível. Avise o responsável pelo Nexo.</p>
         )}
 
         {error && <p className="login-error" role="alert">{error}</p>}

@@ -3,42 +3,9 @@
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AuthSession, clearAuthSession, readAuthSession } from '../../../lib/auth-session';
+import { ChatMessage, isConversationResponse, parseHistory, requestError } from '../../../lib/conversation-data';
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
-
-interface ConversationResponse {
-  assistantMessage: {
-    id: string;
-    role: 'ASSISTANT';
-    content: string;
-  };
-}
-
-interface ChatMessage {
-  id: string;
-  author: 'user' | 'nexo';
-  text: string;
-}
-
-function isConversationResponse(value: unknown): value is ConversationResponse {
-  if (!value || typeof value !== 'object' || !('assistantMessage' in value)) return false;
-  const assistantMessage = (value as { assistantMessage?: unknown }).assistantMessage;
-  return assistantMessage !== null
-    && typeof assistantMessage === 'object'
-    && typeof (assistantMessage as { id?: unknown }).id === 'string'
-    && (assistantMessage as { role?: unknown }).role === 'ASSISTANT'
-    && typeof (assistantMessage as { content?: unknown }).content === 'string';
-}
-
-function errorMessage(body: unknown): string {
-  if (body && typeof body === 'object' && 'message' in body) {
-    const message = (body as { message?: unknown }).message;
-    if (typeof message === 'string') return message;
-    if (Array.isArray(message)) return message.join(' ');
-  }
-
-  return 'Não foi possível analisar a mensagem. Tente novamente.';
-}
 
 export default function ConversationPage() {
   const router = useRouter();
@@ -52,19 +19,40 @@ export default function ConversationPage() {
   ]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const sending = useRef(false);
   const messageEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setSession(readAuthSession());
-  }, []);
+    const current = readAuthSession();
+    setSession(current);
+    if (!current) { setHistoryLoading(false); return; }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    let mounted = true;
+    async function loadHistory() {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/v1/conversations/current`, {
+          headers: { Authorization: `Bearer ${current!.accessToken}` }, signal: controller.signal,
+        });
+        if (response.status === 401) { clearAuthSession(); router.replace('/login'); return; }
+        if (!response.ok) throw new Error('Não foi possível carregar suas mensagens anteriores. Recarregue para tentar novamente.');
+        const history = parseHistory(await response.json());
+        if (mounted && history.length) setMessages(history);
+      } catch {
+        if (mounted) setError('Não foi possível carregar suas mensagens anteriores. Recarregue para tentar novamente.');
+      } finally { window.clearTimeout(timeout); if (mounted) setHistoryLoading(false); }
+    }
+    void loadHistory();
+    return () => { mounted = false; window.clearTimeout(timeout); controller.abort(); };
+  }, [router]);
   useEffect(() => { messageEnd.current?.scrollIntoView({ block: 'nearest' }); }, [messages, loading]);
 
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = text.trim();
-    if (!message || sending.current) return;
+    if (!message || sending.current || historyLoading) return;
     sending.current = true;
 
     const currentSession = readAuthSession();
@@ -82,6 +70,7 @@ export default function ConversationPage() {
       setError('Sua sessão não está disponível. Entre novamente para continuar.');
       setLoading(false);
       sending.current = false;
+      router.replace('/login');
       return;
     }
 
@@ -93,6 +82,7 @@ export default function ConversationPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ message }),
+        signal: AbortSignal.timeout(120_000),
       });
       const body: unknown = await response.json().catch(() => null);
 
@@ -104,9 +94,7 @@ export default function ConversationPage() {
       }
 
       if (!response.ok) {
-        throw new Error(response.status >= 500
-          ? 'Não foi possível processar sua mensagem. Tente novamente.'
-          : errorMessage(body));
+        throw new Error(requestError(response.status));
       }
 
       if (!isConversationResponse(body)) {
@@ -114,11 +102,13 @@ export default function ConversationPage() {
       }
 
       setMessages((current) => [
-        ...current.filter((item) => item.id !== body.assistantMessage.id),
+        ...current.filter((item) => item.id !== body.assistantMessage.id).map(item => item.id === `${messageId}-user` ? { ...item, id: body.messageId } : item),
         { id: body.assistantMessage.id, author: 'nexo', text: body.assistantMessage.content },
       ]);
     } catch (cause) {
-      setError(cause instanceof TypeError ? 'Não foi possível conectar ao Nexo. Tente novamente.' : cause instanceof Error ? cause.message : 'Não foi possível processar sua mensagem. Tente novamente.');
+      setError(cause instanceof DOMException && cause.name === 'TimeoutError'
+        ? 'O Nexo demorou para responder. Recarregue para conferir se a mensagem foi registrada antes de reenviar.'
+        : cause instanceof TypeError ? 'Não foi possível conectar ao Nexo. Tente novamente.' : cause instanceof Error ? cause.message : 'Não foi possível processar sua mensagem. Tente novamente.');
     } finally {
       setLoading(false);
       sending.current = false;
@@ -145,10 +135,11 @@ export default function ConversationPage() {
               <small>Seu contexto de trabalho</small>
             </span>
           </div>
-          <span className="panel-badge"><span className="live-dot" /> IA conectada</span>
+          <span className="panel-badge">Conversa de hoje</span>
         </div>
 
         <div className="chat-messages" aria-live="polite">
+          {historyLoading && <p role="status">Carregando suas mensagens de hoje…</p>}
           {messages.map((message) => {
             const isUser = message.author === 'user';
             return (
@@ -182,10 +173,11 @@ export default function ConversationPage() {
             value={text}
             onChange={(event) => setText(event.target.value)}
             placeholder="Ex.: Hoje finalizei a integração bancária e comecei a revisar o Portal..."
-            disabled={loading}
+            disabled={loading || historyLoading}
+            maxLength={10000}
             autoComplete="off"
           />
-          <button className="button" type="submit" disabled={!text.trim() || loading}>
+          <button className="button" type="submit" disabled={!text.trim() || loading || historyLoading}>
             {loading ? 'Enviando…' : 'Enviar'} <span aria-hidden="true">↗</span>
           </button>
         </form>

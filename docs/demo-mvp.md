@@ -64,17 +64,27 @@ As contas `example.invalid` não são contas Google reais. A interface permite G
 ## Rotas e roteiro
 
 1. Entre como colaborador. `/colaborador` lista projetos reais e oferece **Conversar com o Nexo**.
-2. Em `/colaborador/conversa`, envie uma atualização comum:
+2. Em `/colaborador/conversa`, comece com uma saudação:
+   > opa, tudo certo?
+   Esperado: resposta natural direcionada ao trabalho, sem criar CheckIn nem inventar projeto.
+   Depois pergunte:
+   > você pode me ajudar de alguma forma?
+   Nexo explica acompanhamento de avanços/dificuldades/próximos passos e busca de conhecimento compartilhado; não é um ChatGPT genérico.
+3. Envie uma atualização comum:
    > Na Automação Financeira finalizei os testes dos boletos.
-   Esperado: `NO_PROBLEM`, Message e CheckIn persistidos; a UI mostra resposta textual.
-3. Dificuldade sem causa identificada:
+   Esperado: contexto e CheckIn persistidos, resposta natural reconhecendo o avanço. A classificação é interna, não aparece no chat.
+4. Dificuldade sem causa identificada:
    > Na Automação Financeira estou com dificuldade para avançar e ainda não identifiquei o problema. Meu próximo passo é investigar o bloqueio.
-   Esperado: `DIFFICULTY`, sem causa inventada; difficulty/nextSteps registrados.
-4. Problema técnico concreto:
+   Esperado: dificuldade/próximo passo registrados, reconhecimento ou uma pergunta útil, sem causa inventada. Se não mencionar projeto e a associação não for segura, Nexo pede essa identificação; repita o relato com o nome do projeto.
+5. Teste os limites do assistente:
+   > faz um código Python para automatizar uma planilha
+   > qual a capital da França?
+   Esperado: Nexo não gera o código nem responde à curiosidade; explica seu papel e redireciona ao contexto de trabalho. Também não cria CheckIn para pedidos genéricos.
+6. Problema técnico concreto:
    > Na Automação Financeira a chamada HTTPS ao gateway financeiro falha com erro SSL porque o certificado expirou. Meu próximo passo é revisar a renovação do certificado.
    O seed inclui um caso SSL autorizado; faça backfill se seu embedding estiver ausente. A busca exige solução preenchida, consentimento, equipe acessível e similaridade ≥ 0.78. A sugestão depende da similaridade real, não é garantida para qualquer texto.
-5. Se houver candidato, Nexo pergunta se quer a solução. Responda **sim** para revelá-la, ou **não** para encerrar a sugestão sem mostrar solução. Para demonstrar ambos, envie novamente o problema entre as decisões. Com pendências de vários projetos, responda o nome de um projeto quando Nexo pedir qual deles.
-6. Entre como LEADER/ADMIN, abra `/lider`, escolha o projeto e consulte `/projetos/:id`: membros, último CheckIn individual, três campos, horário, histórico recente e problemas em aberto/soluções compartilhadas. Use **Atualizar contexto** após a conversa.
+7. Se houver candidato, Nexo pergunta se quer a solução. Responda **sim** para revelá-la, ou **não** para encerrar a sugestão sem mostrar solução. Para demonstrar ambos, envie novamente o problema entre as decisões. Com pendências de vários projetos, responda o nome de um projeto quando Nexo pedir qual deles. O fluxo de solução tem prioridade sobre a resposta conversacional; o conteúdo não aparece antes do aceite.
+8. Entre como LEADER/ADMIN, abra `/lider`, escolha o projeto e consulte `/projetos/:id`: membros, último CheckIn individual, três campos, horário, histórico recente e problemas em aberto/soluções compartilhadas. Use **Atualizar contexto** após a conversa.
 
 Ausência de atualização é neutra: “Sem atualização registrada hoje.” Difficulty/nextSteps nulos não viram avaliação de produtividade. Soluções privadas não são expostas; ser líder não concede consentimento automático. As leituras de CheckIns mostram contexto estruturado, não as mensagens brutas da Conversation privada; os vínculos originais permanecem no banco.
 
@@ -87,7 +97,7 @@ npm run test:integration:golden
 
 Requer PostgreSQL preparado e acesso real à OpenAI. `test:integration:semantic` executa o mesmo verificador ampliado. Não faz parte do `npm test` porque tem dependências externas e custo.
 
-O script cria fixtures com IDs `semantic-test-<UUID>`, dois projetos acessíveis e uma equipe externa. Salva problema OAuth com solução/consentimento, gera vetor de 1536 dimensões, testa paráfrase e caso diferente, recebe classificação/normalização da Conversation, verifica CheckIn e Message, aceite/recusa/desambiguação, consulta do líder e histórico. Exercita isolamento de Conversation, acesso por equipe, MEMBER/LEADER/ADMIN e revogação de acesso/consentimento/solução. Confirma top 5 com seis candidatos elegíveis e threshold 0.78 intacto.
+O script cria fixtures com IDs `semantic-test-<UUID>`, dois projetos acessíveis e uma equipe externa. Valida conversa casual/capacidades sem CheckIn, atualização, dificuldade sem causa, limites de escopo e isolamento entre projetos. Salva problema OAuth com solução/consentimento, gera vetor de 1536 dimensões, testa paráfrase e caso diferente, recebe classificação/normalização da Conversation, verifica CheckIn e Message, aceite/recusa/desambiguação, consulta do líder e histórico. Exercita isolamento de Conversation, acesso por equipe, MEMBER/LEADER/ADMIN e revogação de acesso/consentimento/solução. Confirma top 5 com seis candidatos elegíveis e threshold 0.78 intacto.
 
 Somente IDs da própria execução são removidos em `finally`; dados reais não são alterados. Interrupção abrupta do processo pode impedir o `finally`: não remova fixtures por prefixo amplo, identifique os IDs exatos daquela execução.
 
@@ -105,6 +115,7 @@ npm run build
 
 - A consolidação de `currentSummary` pela LLM pode perder informação anterior. Não foi redesenhada: Messages originais continuam sendo a fonte de verdade e nulos novos preservam difficulty/nextSteps anteriores.
 - Histórico visual do chat após reload não está implementado, embora as mensagens sejam persistidas no banco.
+- Histórico USER/ASSISTANT não é enviado à análise atual. Mensagens sem projeto seguro podem exigir repetir o relato com o nome explícito; não há associação inventada para evitar essa pergunta.
 - Sem criação automática de TechnicalProblem, indicação de colega ou HelpRequest a partir desta Conversation.
 - Listagens de histórico/conhecimento são limitadas pelos endpoints atuais; não são um calendário nem um catálogo completo.
 - Google precisa de origem autorizada e e-mail cadastrado. O browser automatizado sem sessão não substitui conferência manual do Google e das telas autenticadas.

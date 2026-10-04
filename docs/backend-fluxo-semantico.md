@@ -1,6 +1,6 @@
 # Backend Nexo — fluxo semântico atual
 
-Estado verificado em 03/10/2026 na branch `codex/integracao-main-fases-1-3`.
+Estado verificado em 04/10/2026 na branch `codex/integracao-main-fases-1-3`.
 Este documento descreve o backend atual; os documentos do kickoff são históricos.
 
 O núcleo de aceite/recusa adicionado depois deste checkpoint está em [Fase 4 — aceite de solução](fase4-aceite-solucao.md).
@@ -11,6 +11,7 @@ O núcleo de aceite/recusa adicionado depois deste checkpoint está em [Fase 4 �
 
 ```text
 Message original → projetos ACTIVE do usuário → extração estruturada (gpt-5.4-mini)
+  assistantResponse: conversa curta orientada ao contexto de trabalho
   por projeto: summary / difficulties / nextSteps / classification / normalizedProblem
     → Conversation diária e CheckIn por usuário + projeto + dia
     → CheckInMessage vincula a Message original, sem apagar vínculos anteriores
@@ -26,6 +27,32 @@ O dia segue o fuso local do processo, conforme a implementação atual.
 `TECHNICAL_PROBLEM` relata sintoma técnico identificável ou causa conhecida.
 Cada contexto é classificado isoladamente. A classificação e a normalização saem da
 mesma extração estruturada, sem uma segunda chamada de classificação.
+
+`extractProjectContexts()` agora retorna `{ assistantResponse, projects }` na mesma
+chamada Responses/structured output (Zod). A resposta reconhece avanços e dificuldades,
+permite saudações e perguntas sobre capacidades, mas redireciona código, redação,
+viagem e curiosidades gerais para o contexto de trabalho. Não inventa soluções.
+Se não identificar projeto com segurança, pergunta qual projeto, sem criar CheckIn.
+Contextos vazios retornados pela IA são descartados antes de persistir.
+
+Prioridade da Message ASSISTANT:
+
+1. aceite/recusa/desambiguação de pending solution e respostas de segurança;
+2. match único: oferta determinística de solução, sem mostrar a solução;
+3. múltiplos matches: pergunta de qual projeto;
+4. demais casos: `assistantResponse` da análise.
+
+Somente os campos estruturados do relato original alimentam CheckIn. Perguntas ou
+texto gerados pelo assistente nunca são extraídos de novo para persistência.
+Não há segunda chamada para resposta conversacional; embeddings continuam sendo
+chamadas distintas apenas no fluxo técnico já existente. Aceite/recusa não chamam IA.
+O contrato HTTP/frontend mantém `assistantMessage.content`; `assistantResponse` é
+interno. O frontend não precisa renderizar JSON ou metadados da classificação.
+
+O repository possui `findRecentMessages(userId, limit)` e a tool de leitura já isola
+o usuário. O histórico USER/ASSISTANT não foi adicionado ao prompt neste bloco:
+preserva o isolamento da mensagem atual e evita reintroduzir soluções já aceitas
+na resposta genérica. Somente os campos diários já existentes são enviados.
 
 Resposta por projeto, quando houver candidato:
 
@@ -47,9 +74,9 @@ Resposta por projeto, quando houver candidato:
 ```
 
 Sem candidato, `solutionSuggestion` é `null`. A busca interna pode retornar `solution`,
-mas o JSON da Conversation não retorna `solution` nem `similarProblems`.
-O aceite e a pendência foram acrescentados pela Fase 4, no documento vinculado acima;
-a resposta conversacional elaborada continua fora do escopo.
+mas antes do aceite o JSON da Conversation não retorna `solution` nem `similarProblems`.
+O aceite e a pendência foram acrescentados pela Fase 4, no documento vinculado acima.
+Uma solução só aparece na Conversation depois do aceite e da revalidação atual.
 Os endpoints da base compartilhada continuam podendo mostrar soluções autorizadas a
 usuários com acesso; a restrição acima é o contrato público da **Conversation**.
 
@@ -138,11 +165,16 @@ A integração semântica é opt-in e exige PostgreSQL com pgvector, migrations 
 textos fictícios, inicia NestJS em porta local efêmera, cria fixtures únicas e testa
 embedding persistido, paráfrase, caso diferente, equipes, ADMIN, consentimento, solução,
 top 5 com seis candidatos, tools e Conversation HTTP sem vazamento de solução.
+Também valida saudações, capacidades, atualização, dificuldade sem causa, tarefas
+fora do escopo, isolamento entre dois projetos e persistência da resposta natural.
+Quando a mensagem sem nome de projeto precisar de esclarecimento, o verificador
+registra isso e envia um follow-up fictício com nome explícito; não força associação.
 Limpa somente IDs/projetos/usuários próprios em `finally`, inclusive após falha.
 Interrupção abrupta do processo pode impedir `finally`; o prefixo `semantic-test-<uuid>`
 identifica a execução, mas não autoriza apagar outros registros em massa.
 Nenhum teste de integração substitui erro/indisponibilidade por sucesso fictício.
 
 Não há lint configurado neste backend; nenhuma ferramenta foi instalada para isso.
-Seleção por projeto entre várias sugestões, UX, criação automática de TechnicalProblem
-e MCP dependem das próximas decisões de Ryan. O núcleo de aceite e a pendência já estão na Fase 4.
+Seleção por projeto entre várias sugestões e frontend real já fazem parte do MVP.
+Criação automática de TechnicalProblem, MCP e recuperação de histórico visual após
+reload permanecem fora deste bloco. Retenção perfeita do summary não é garantida.

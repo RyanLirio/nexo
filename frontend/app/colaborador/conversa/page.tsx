@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AuthSession, clearAuthSession, readAuthSession } from '../../../lib/auth-session';
 import { ChatMessage, conversationWelcome, isConversationResponse, parseHistory, requestError } from '../../../lib/conversation-data';
+import { UserAvatar } from '../../../components/UserAvatar';
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
 
@@ -112,6 +113,7 @@ export default function ConversationPage() {
 
   const userName = session?.user.name.split(' ')[0] || 'Você';
   const userInitial = userName.charAt(0).toUpperCase() || 'V';
+  const userAvatarUrl = session?.user.avatarUrl;
 
   return (
     <main id="main-content" tabIndex={-1} className="content conversation-page">
@@ -139,9 +141,18 @@ export default function ConversationPage() {
             const isUser = message.author === 'user';
             return (
               <div className={`message-row ${isUser ? 'message-row-user' : ''}`} key={message.id}>
-                <span className={`message-avatar ${isUser ? 'message-avatar-user' : ''}`} aria-hidden="true">
-                  {isUser ? userInitial : '✳'}
-                </span>
+                {isUser ? (
+                  <UserAvatar
+                    name={session?.user.name || userName}
+                    avatarUrl={userAvatarUrl}
+                    className="message-avatar message-avatar-user"
+                    fallbackInitial={userInitial}
+                  />
+                ) : (
+                  <span className="message-avatar" aria-hidden="true">
+                    ✳
+                  </span>
+                )}
                 <div className="message">
                   <strong>{isUser ? userName : 'Nexo'}</strong>
                   <p>{message.text}</p>

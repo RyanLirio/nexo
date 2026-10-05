@@ -11,10 +11,4 @@ export class AuthController {
   async loginWithGoogle(@Body() body: { idToken?: string }) {
     return this.authService.loginWithGoogle(body?.idToken as string);
   }
-
-  @Public()
-  @Post('dev-login')
-  async devLogin(@Body() body: { email?: string }) {
-    return this.authService.devLogin(body?.email as string);
-  }
 }

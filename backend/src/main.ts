@@ -9,8 +9,16 @@ async function bootstrap() {
     throw new Error('PORT deve ser um número entre 1 e 65535.');
   }
   const app = await NestFactory.create(AppModule);
+  const allowedOrigins = Array.from(
+    new Set([
+      process.env.FRONTEND_URL,
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+    ].filter((o): o is string => Boolean(o)))
+  );
   app.enableCors({
-    origin: process.env.FRONTEND_URL ?? 'http://localhost:3000',
+    origin: allowedOrigins,
+    credentials: true,
   });
   app.enableShutdownHooks();
   await app.listen(port);

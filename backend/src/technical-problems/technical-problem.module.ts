@@ -4,12 +4,10 @@ import { TechnicalProblemService } from './technical-problem.service';
 import { TechnicalProblemRepository } from './technical-problem.repository';
 import { PrismaTechnicalProblemRepository } from './prisma-technical-problem.repository';
 import { PrismaService } from '../prisma.service';
-import { AiModule } from '../ai/ai.module';
 
 @Module({
-    imports: [AiModule],
-    controllers: [TechnicalProblemController],
-    providers: [
+  controllers: [TechnicalProblemController],
+  providers: [
     PrismaService,
     TechnicalProblemService,
     {

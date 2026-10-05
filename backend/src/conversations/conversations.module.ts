@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { ProjectsModule } from '../projects/projects.module';
 import { AiModule } from '../ai/ai.module';
@@ -11,7 +11,7 @@ import { CheckInsModule } from '../check-ins/check-ins.module';
 @Module({
   imports: [
     ProjectsModule,
-    AiModule,
+    forwardRef(() => AiModule),
     CheckInsModule,
   ],
   controllers: [ConversationsController],
@@ -23,6 +23,6 @@ import { CheckInsModule } from '../check-ins/check-ins.module';
       useClass: PrismaConversationRepository,
     },
   ],
-  exports: [ConversationsService],
+  exports: [ConversationsService, ConversationRepository],
 })
 export class ConversationsModule {}

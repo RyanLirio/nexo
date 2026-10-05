@@ -10,7 +10,7 @@ import { ConversationsModule } from '../../conversations/conversations.module';
     ProjectsModule,
     CheckInsModule,
     TechnicalProblemModule,
-    ConversationsModule,
+    forwardRef(() => ConversationsModule),
   ],
   providers: [AiToolsService],
   exports: [AiToolsService],

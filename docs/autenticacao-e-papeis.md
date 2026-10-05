@@ -13,6 +13,5 @@ O Nexo usa papéis globais porque o MVP representa uma única empresa. O papel f
 
 `PrismaAccessControlService.isAdmin` consulta `User.role`. `isTeamLeader` combina duas condições: existência de `TeamMember` para a equipe informada e `User.role = LEADER`. O `RolesGuard` verifica primeiro o acesso global de administrador, portanto um `ADMIN` não depende da verificação de liderança.
 
-Essa implementação substitui as consultas antigas a `OrganizationMember.role` e `TeamMember.role`, removidas pela migration `20260925150000_remove_organization_add_user_role`.
+A autenticação do Nexo é operada exclusivamente através do fluxo oficial Google OAuth (`POST /api/v1/auth/google`). O endpoint de desenvolvimento (`dev-login`) e o cabeçalho de bypass (`x-user-id`) foram permanentemente removidos para garantir que nenhuma credencial JWT seja emitida sem verificação criptográfica válida do provedor de identidade. Todas as rotas protegidas exigem um token Bearer assinado com chave secreta do servidor.
 
-Enquanto a autenticação Google não estiver configurada no ambiente, o login de desenvolvimento e o cabeçalho de identificação devem ser tratados apenas como recursos locais, não como segurança de produção.

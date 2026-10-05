@@ -63,17 +63,6 @@ export class AuthGuard implements CanActivate {
       }
     }
 
-    // 4. Fallback de teste via header x-user-id (APENAS em ambiente não produtivo)
-    if (process.env.NODE_ENV !== 'production') {
-      const headerUserId = req.headers?.['x-user-id'];
-      const userId = Array.isArray(headerUserId) ? headerUserId[0] : headerUserId;
-
-      if (typeof userId === 'string' && userId.trim()) {
-        req.user = { id: userId.trim() };
-        return true;
-      }
-    }
-
     throw new UnauthorizedException('Usuário não autenticado. Forneça um token Bearer válido.');
   }
 }

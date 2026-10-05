@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Shield } from 'lucide-react';
 import { AuthSession, clearAuthSession, dashboardFor, navigationFor, readAuthSession, SESSION_CHANGED } from '../lib/auth-session';
+import { UserAvatar, initials } from './UserAvatar';
 
 type Theme = 'dark' | 'light';
 
@@ -19,16 +20,6 @@ function isProtectedPath(pathname: string): boolean {
     pathname === '/admin' ||
     pathname.startsWith('/admin')
   );
-}
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase();
 }
 
 export default function AppChrome({ children }: { children: ReactNode }) {
@@ -144,7 +135,7 @@ export default function AppChrome({ children }: { children: ReactNode }) {
           <div className="profile-container" ref={profile}>
             <button ref={profileButton} className="profile-link profile-button" type="button" onClick={() => setProfileOpen(open => !open)}
               aria-label={`Dados da conta de ${session.user.name}`} aria-expanded={profileOpen} aria-controls="profile-panel">
-              <span className="profile-avatar" aria-hidden="true">{initials(session.user.name)}</span>
+              <UserAvatar name={session.user.name} avatarUrl={session.user.avatarUrl} className="profile-avatar" />
               <span>{session.user.name.split(' ')[0]} <span aria-hidden="true">⌄</span></span>
             </button>
             {profileOpen && <div id="profile-panel" className="profile-panel" aria-label="Dados da conta">

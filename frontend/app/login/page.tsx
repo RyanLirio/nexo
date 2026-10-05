@@ -11,6 +11,7 @@ import {
   saveAuthSession,
   isAuthSession,
 } from '../../lib/auth-session';
+import { UserAvatar } from '../../components/UserAvatar';
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
 const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
@@ -114,9 +115,17 @@ export default function LoginPage() {
 
         {existingSession ? (
           <div className="saved-session">
-            <div>
-              <strong>{existingSession.user.name}</strong>
-              <span>{existingSession.user.email}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <UserAvatar
+                name={existingSession.user.name}
+                avatarUrl={existingSession.user.avatarUrl}
+                className="profile-avatar"
+                style={{ width: '42px', height: '42px', fontSize: '14px', flexShrink: 0 }}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                <strong>{existingSession.user.name}</strong>
+                <span>{existingSession.user.email}</span>
+              </div>
             </div>
             <button className="button" type="button" onClick={continueSession}>Continuar</button>
             <button className="login-secondary-button" type="button" onClick={changeAccount}>Usar outra conta</button>

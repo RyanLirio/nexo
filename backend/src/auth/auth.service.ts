@@ -2,7 +2,6 @@ import {
   ForbiddenException,
   HttpException,
   Injectable,
-  NotFoundException,
   Optional,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -75,38 +74,6 @@ export class AuthService {
         name: payload.name || user.name,
         role: user.role,
         avatarUrl: payload.picture ?? user.avatarUrl,
-      },
-    };
-  }
-
-  async devLogin(email: string): Promise<AuthResponse> {
-    if (process.env.NODE_ENV === 'production') {
-      throw new ForbiddenException('Dev login indisponível em ambiente de produção.');
-    }
-
-    if (!email || typeof email !== 'string') {
-      throw new UnauthorizedException('E-mail é obrigatório para dev login.');
-    }
-
-    const user = await this.userRepository.findByEmail(email.trim().toLowerCase());
-    if (!user) {
-      throw new NotFoundException(`Usuário com e-mail "${email}" não encontrado.`);
-    }
-
-    if (user.isActive === false) {
-      throw new ForbiddenException('Acesso bloqueado: usuário inativo. Entre em contato com o administrador.');
-    }
-
-    const token = this.generateToken(user.id, user.email);
-
-    return {
-      accessToken: token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        avatarUrl: user.avatarUrl,
       },
     };
   }

@@ -33,6 +33,7 @@ import {
   AdminHelpRequest,
 } from '../../lib/admin-api';
 import './admin.css';
+import { UserAvatar } from '../../components/UserAvatar';
 
 type Tab = 'overview' | 'users' | 'teams' | 'projects' | 'knowledge';
 
@@ -692,9 +693,12 @@ export default function AdminPage() {
                       <tr key={user.id}>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span className="profile-avatar" style={{ width: '30px', height: '30px', fontSize: '11px' }}>
-                              {user.name.slice(0, 2).toUpperCase()}
-                            </span>
+                            <UserAvatar
+                              name={user.name}
+                              avatarUrl={user.avatarUrl}
+                              className="profile-avatar"
+                              style={{ width: '30px', height: '30px', fontSize: '11px', flexShrink: 0 }}
+                            />
                             <strong>{user.name}</strong>
                           </div>
                         </td>

@@ -67,36 +67,12 @@ test('AuthGuard rejeita token Bearer JWT inválido ou expirado', () => {
   assert.throws(() => guard.canActivate(context), UnauthorizedException);
 });
 
-test('AuthGuard ignora header x-user-id e lança UnauthorizedException em ambiente de produção', () => {
-  const originalEnv = process.env.NODE_ENV;
-  process.env.NODE_ENV = 'production';
-  try {
-    const reflector = new Reflector();
-    const guard = new AuthGuard(reflector, JWT_SECRET);
-    const context = createMockContext({ 'x-user-id': 'hacker-user' });
+test('AuthGuard rejeita header x-user-id e lança UnauthorizedException em qualquer ambiente', () => {
+  const reflector = new Reflector();
+  const guard = new AuthGuard(reflector, JWT_SECRET);
+  const context = createMockContext({ 'x-user-id': 'hacker-user' });
 
-    assert.throws(() => guard.canActivate(context), UnauthorizedException);
-  } finally {
-    process.env.NODE_ENV = originalEnv;
-  }
-});
-
-test('AuthGuard aceita x-user-id quando em ambiente de desenvolvimento/teste', () => {
-  const originalEnv = process.env.NODE_ENV;
-  process.env.NODE_ENV = 'test';
-  try {
-    const reflector = new Reflector();
-    const guard = new AuthGuard(reflector, JWT_SECRET);
-    const context = createMockContext({ 'x-user-id': 'user-123' });
-
-    const canActivate = guard.canActivate(context);
-    assert.equal(canActivate, true);
-
-    const user = extractUserFromContext(context);
-    assert.deepEqual(user, { id: 'user-123' });
-  } finally {
-    process.env.NODE_ENV = originalEnv;
-  }
+  assert.throws(() => guard.canActivate(context), UnauthorizedException);
 });
 
 test('AuthGuard preserva req.user caso já esteja presente', () => {

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AiToolsService } from './ai-tools.service';
 import { ProjectsModule } from '../../projects/projects.module';
 import { CheckInsModule } from '../../check-ins/check-ins.module';
@@ -10,7 +10,7 @@ import { ConversationsModule } from '../../conversations/conversations.module';
     ProjectsModule,
     CheckInsModule,
     TechnicalProblemModule,
-    ConversationsModule,
+    forwardRef(() => ConversationsModule),
   ],
   providers: [AiToolsService],
   exports: [AiToolsService],

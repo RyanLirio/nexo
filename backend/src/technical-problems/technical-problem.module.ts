@@ -8,9 +8,9 @@ import { AiModule } from '../ai/ai.module';
 import { AccessControlModule } from '../common/auth/access-control.module';
 
 @Module({
-    imports: [AiModule, AccessControlModule],
-    controllers: [TechnicalProblemController],
-    providers: [
+  imports: [AiModule, AccessControlModule],
+  controllers: [TechnicalProblemController],
+  providers: [
     PrismaService,
     TechnicalProblemService,
     {

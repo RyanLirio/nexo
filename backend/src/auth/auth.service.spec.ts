@@ -40,8 +40,36 @@ class MockUserRepository extends UserRepository {
     return u ?? null;
   }
 
-  async list(search?: string): Promise<UserRecord[]> {
+  async list(): Promise<UserRecord[]> {
     return this.users;
+  }
+
+  async create(data: { name: string; email: string; role: string }): Promise<UserRecord> {
+    const record: UserRecord = {
+      id: `user-${this.users.length + 1}`,
+      name: data.name,
+      email: data.email,
+      role: data.role,
+      isActive: true,
+      avatarUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.users.push(record);
+    return record;
+  }
+
+  async update(id: string, data: { name?: string; role?: string; isActive?: boolean }): Promise<UserRecord> {
+    const user = this.users.find((u) => u.id === id);
+    if (!user) throw new NotFoundException('User not found');
+    if (data.name !== undefined) (user as any).name = data.name;
+    if (data.role !== undefined) (user as any).role = data.role;
+    if (data.isActive !== undefined) user.isActive = data.isActive;
+    return user;
+  }
+
+  async countActiveAdmins(): Promise<number> {
+    return this.users.filter((u) => u.role === 'ADMIN' && u.isActive).length;
   }
 
   async findUserProjects(): Promise<any[]> {
@@ -80,6 +108,7 @@ test('AuthService.loginWithGoogle autentica usuário pré-cadastrado e emite JWT
     name: 'Gustavo Felicetti',
     email: 'gustavo@nexo.com',
     role: 'MEMBER',
+    isActive: true,
     avatarUrl: null,
     googleSubject: null,
     createdAt: new Date(),
@@ -107,9 +136,31 @@ test('AuthService.loginWithGoogle autentica usuário pré-cadastrado e emite JWT
   });
 });
 
+test('AuthService.loginWithGoogle rejeita usuário inativo com ForbiddenException', async () => {
+  const repo = new MockUserRepository();
+  repo.users.push({
+    id: 'user-inactive',
+    name: 'Inativo User',
+    email: 'gustavo@nexo.com',
+    role: 'MEMBER',
+    isActive: false,
+    avatarUrl: null,
+    googleSubject: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  const verifier = new MockGoogleVerifier();
+  const service = new AuthService(repo, verifier, JWT_SECRET);
+
+  await assert.rejects(
+    () => service.loginWithGoogle('valid-token-inactive-user'),
+    (err: any) => err instanceof ForbiddenException && err.message.includes('inativo'),
+  );
+});
+
 test('AuthService.loginWithGoogle rejeita conta não cadastrada com ForbiddenException (política de acesso restrito)', async () => {
   const repo = new MockUserRepository();
-  // Nao há usuarios cadastrados no repo
   const verifier = new MockGoogleVerifier();
   const service = new AuthService(repo, verifier, JWT_SECRET);
 
@@ -126,11 +177,12 @@ test('AuthService.loginWithGoogle rejeita token inválido com UnauthorizedExcept
     name: 'Gustavo',
     email: 'gustavo@nexo.com',
     role: 'MEMBER',
+    isActive: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   });
 
-  const verifier = new MockGoogleVerifier(true); // Falha na verificacao
+  const verifier = new MockGoogleVerifier(true);
   const service = new AuthService(repo, verifier, JWT_SECRET);
 
   await assert.rejects(
@@ -149,6 +201,7 @@ test('AuthService.devLogin autentica usuário cadastrado em ambiente não produt
       name: 'Dev User',
       email: 'dev@nexo.com',
       role: 'MEMBER',
+      isActive: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -163,6 +216,33 @@ test('AuthService.devLogin autentica usuário cadastrado em ambiente não produt
 
     const decoded = jwt.verify(result.accessToken, JWT_SECRET) as { sub: string };
     assert.equal(decoded.sub, 'user-dev-1');
+  } finally {
+    process.env.NODE_ENV = originalEnv;
+  }
+});
+
+test('AuthService.devLogin bloqueia usuário inativo', async () => {
+  const originalEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  try {
+    const repo = new MockUserRepository();
+    repo.users.push({
+      id: 'user-dev-inactive',
+      name: 'Dev Inactive',
+      email: 'inactive@nexo.com',
+      role: 'MEMBER',
+      isActive: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const verifier = new MockGoogleVerifier();
+    const service = new AuthService(repo, verifier, JWT_SECRET);
+
+    await assert.rejects(
+      () => service.devLogin('inactive@nexo.com'),
+      (err: any) => err instanceof ForbiddenException && err.message.includes('inativo'),
+    );
   } finally {
     process.env.NODE_ENV = originalEnv;
   }

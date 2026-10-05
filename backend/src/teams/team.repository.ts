@@ -4,6 +4,10 @@ export interface TeamRecord {
   description?: string | null;
   createdAt: Date;
   updatedAt: Date;
+  _count?: {
+    members?: number;
+    projects?: number;
+  };
 }
 
 export interface TeamMemberRecord {
@@ -22,6 +26,8 @@ export abstract class TeamRepository {
   abstract findById(id: string): Promise<TeamRecord | null>;
   abstract create(data: { name: string; description?: string | null }): Promise<TeamRecord>;
   abstract update(id: string, data: { name?: string; description?: string | null }): Promise<TeamRecord>;
+  abstract countProjects(teamId: string): Promise<number>;
+  abstract delete(id: string): Promise<void>;
   abstract listMembers(teamId: string): Promise<TeamMemberRecord[]>;
   abstract findMember(teamId: string, userId: string): Promise<TeamMemberRecord | null>;
   abstract addMember(teamId: string, userId: string): Promise<TeamMemberRecord>;

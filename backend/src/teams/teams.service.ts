@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { TeamMemberRecord, TeamRecord, TeamRepository } from './team.repository';
 import { Team } from './models';
 import { fields, optionalText, requiredText } from '../request-fields';
@@ -39,6 +39,19 @@ export class TeamsService {
       name: name ?? undefined,
       description: description ?? undefined,
     });
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.getById(id);
+
+    const projectCount = await this.teamRepo.countProjects(id);
+    if (projectCount > 0) {
+      throw new BadRequestException(
+        `Não é possível excluir uma equipe que possui ${projectCount} projeto(s) associado(s). Remova ou transfira os projetos antes de excluir.`,
+      );
+    }
+
+    await this.teamRepo.delete(id);
   }
 
   async listMembers(teamId: string): Promise<TeamMemberRecord[]> {

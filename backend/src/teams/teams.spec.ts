@@ -1,13 +1,14 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { TeamMemberRecord, TeamRecord, TeamRepository } from './team.repository';
 import { TeamsService } from './teams.service';
 
 class InMemoryTeamRepository extends TeamRepository {
   public teams: TeamRecord[] = [];
   public members: TeamMemberRecord[] = [];
+  public projectCounts: Record<string, number> = {};
 
   async list(): Promise<TeamRecord[]> {
     return this.teams;
@@ -15,6 +16,15 @@ class InMemoryTeamRepository extends TeamRepository {
 
   async findById(id: string): Promise<TeamRecord | null> {
     return this.teams.find(t => t.id === id) || null;
+  }
+
+  async countProjects(teamId: string): Promise<number> {
+    return this.projectCounts[teamId] || 0;
+  }
+
+  async delete(id: string): Promise<void> {
+    this.teams = this.teams.filter(t => t.id !== id);
+    this.members = this.members.filter(m => m.teamId !== id);
   }
 
   async create(data: { name: string; description?: string | null }): Promise<TeamRecord> {
@@ -98,6 +108,29 @@ test('TeamsService.removeMember remove usuário da equipe', async () => {
   const service = new TeamsService(repo);
 
   await service.removeMember('t1', 'u1');
-  const members = await service.listMembers('t1');
-  assert.equal(members.length, 0);
+  assert.equal(repo.members.length, 0);
+});
+
+test('TeamsService.delete exclui equipe quando não há projetos vinculados', async () => {
+  const repo = new InMemoryTeamRepository();
+  repo.teams = [{ id: 't1', name: 'Design', createdAt: new Date(), updatedAt: new Date() }];
+  repo.members = [{ teamId: 't1', userId: 'u1', joinedAt: new Date() }];
+  repo.projectCounts['t1'] = 0;
+  const service = new TeamsService(repo);
+
+  await service.delete('t1');
+  assert.equal(repo.teams.length, 0);
+  assert.equal(repo.members.length, 0);
+});
+
+test('TeamsService.delete bloqueia exclusão de equipe com projetos associados', async () => {
+  const repo = new InMemoryTeamRepository();
+  repo.teams = [{ id: 't1', name: 'Engenharia', createdAt: new Date(), updatedAt: new Date() }];
+  repo.projectCounts['t1'] = 3;
+  const service = new TeamsService(repo);
+
+  await assert.rejects(
+    () => service.delete('t1'),
+    (err: any) => err instanceof BadRequestException && err.message.includes('3 projeto(s) associado(s)'),
+  );
 });

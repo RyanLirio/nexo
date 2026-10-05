@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { UserRepository, UserRecord, UserProjectRecord } from './user.repository';
+import { UserRepository, UserRecord, UserProjectRecord, ListUsersParams } from './user.repository';
 
 @Injectable()
 export class PrismaUserRepository extends UserRepository {
@@ -16,6 +16,7 @@ export class PrismaUserRepository extends UserRepository {
         name: true,
         email: true,
         role: true,
+        isActive: true,
         avatarUrl: true,
         createdAt: true,
         updatedAt: true,
@@ -31,6 +32,7 @@ export class PrismaUserRepository extends UserRepository {
         name: true,
         email: true,
         role: true,
+        isActive: true,
         avatarUrl: true,
         createdAt: true,
         updatedAt: true,
@@ -38,26 +40,97 @@ export class PrismaUserRepository extends UserRepository {
     });
   }
 
-  async list(search?: string): Promise<UserRecord[]> {
+  async list(params?: ListUsersParams | string): Promise<UserRecord[]> {
+    const search = typeof params === 'string' ? params : params?.search;
+    const status = typeof params === 'object' ? params?.status : undefined;
+    const role = typeof params === 'object' ? params?.role : undefined;
+
+    const where: any = {};
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (status === 'active') {
+      where.isActive = true;
+    } else if (status === 'inactive') {
+      where.isActive = false;
+    }
+
+    if (role && role !== 'ALL') {
+      where.role = role as any;
+    }
+
     return this.prisma.user.findMany({
-      where: search
-        ? {
-            OR: [
-              { name: { contains: search, mode: 'insensitive' } },
-              { email: { contains: search, mode: 'insensitive' } },
-            ],
-          }
-        : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
+        isActive: true,
         avatarUrl: true,
         createdAt: true,
         updatedAt: true,
       },
       orderBy: { name: 'asc' },
+    });
+  }
+
+  async create(data: { name: string; email: string; role: string }): Promise<UserRecord> {
+    return this.prisma.user.create({
+      data: {
+        name: data.name,
+        email: data.email,
+        role: data.role as any,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        avatarUrl: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async update(
+    id: string,
+    data: { name?: string; role?: string; isActive?: boolean },
+  ): Promise<UserRecord> {
+    return this.prisma.user.update({
+      where: { id },
+      data: {
+        ...(data.name ? { name: data.name } : {}),
+        ...(data.role ? { role: data.role as any } : {}),
+        ...(typeof data.isActive === 'boolean' ? { isActive: data.isActive } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        avatarUrl: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async countActiveAdmins(): Promise<number> {
+    return this.prisma.user.count({
+      where: {
+        role: 'ADMIN',
+        isActive: true,
+      },
     });
   }
 

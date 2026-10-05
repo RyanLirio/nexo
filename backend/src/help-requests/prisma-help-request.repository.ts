@@ -8,10 +8,11 @@ export class PrismaHelpRequestRepository extends HelpRequestRepository {
     super();
   }
 
-  async list(projectId?: string, status?: string): Promise<HelpRequestRecord[]> {
+  async list(projectId?: string, status?: string, accessibleProjectIds?: string[]): Promise<HelpRequestRecord[]> {
     const where: Record<string, unknown> = {};
     if (projectId) where.projectId = projectId;
     if (status) where.status = status;
+    if (accessibleProjectIds) where.AND = [{ projectId: { in: accessibleProjectIds } }];
 
     return this.prisma.helpRequest.findMany({
       where,

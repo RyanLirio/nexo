@@ -23,6 +23,7 @@ export interface CheckInRecord {
 }
 
 export abstract class CheckInRepository {
+  abstract messagesBelongToUser(messageIds: string[], userId: string): Promise<boolean>;
   abstract projectExists(projectId: string): Promise<boolean>;
   abstract isProjectMember(projectId: string, userId: string): Promise<boolean>;
   abstract listByProject(
@@ -39,10 +40,14 @@ export abstract class CheckInRepository {
     endOfDay: Date,
   ): Promise<CheckInRecord | null>;
 
-  abstract updateSummary(
+  abstract updateContext(
     id: string,
-    summary: string,
-    messageId: string,
+    data: {
+      summary: string;
+      difficulties: string | null;
+      nextSteps: string | null;
+      messageId: string;
+    },
   ): Promise<CheckInRecord>;
 
   abstract create(data: {

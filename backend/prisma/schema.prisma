@@ -37,6 +37,12 @@ enum MessageRole {
   ASSISTANT
 }
 
+enum TechnicalSolutionSuggestionStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
 model User {
   id                   String               @id @default(uuid())
   name                 String
@@ -60,6 +66,7 @@ model User {
   requests             HelpRequest[]        @relation("Requester")
   assignedHelp         HelpRequest[]        @relation("Helper")
   statusChanges        ProjectStatusHistory[]
+  technicalSolutionSuggestions PendingTechnicalSolutionSuggestion[]
 }
 
 model Team {
@@ -106,6 +113,7 @@ model Project {
   technicalProblems TechnicalProblem[]
   helpRequests      HelpRequest[]
   statusHistory     ProjectStatusHistory[]
+  technicalSolutionSuggestions PendingTechnicalSolutionSuggestion[]
 
   @@index([teamId])
   @@index([leaderId])
@@ -132,6 +140,7 @@ model Conversation {
   user      User                  @relation(fields: [userId], references: [id])
   projects  ConversationProject[]
   messages  Message[]
+  technicalSolutionSuggestions PendingTechnicalSolutionSuggestion[]
 
   @@index([userId])
 }
@@ -224,6 +233,7 @@ model TechnicalProblem {
   sourceHelpRequest   HelpRequest? @relation(fields: [sourceHelpRequestId], references: [id])
   author              User         @relation("TechnicalProblemAuthor", fields: [authorId], references: [id])
   authorizer          User?        @relation("TechnicalProblemAuthorizer", fields: [sharingAuthorizedBy], references: [id])
+  solutionSuggestions PendingTechnicalSolutionSuggestion[]
 
   @@index([projectId])
   @@index([sourceCheckInId])
@@ -231,6 +241,29 @@ model TechnicalProblem {
   @@index([authorId])
   @@index([sharingAuthorizedBy])
   @@index([sharingAuthorizedAt])
+}
+
+model PendingTechnicalSolutionSuggestion {
+  id                 String @id @default(uuid())
+  conversationId     String
+  userId             String
+  projectId          String
+  technicalProblemId String
+  similarity         Float
+  status             TechnicalSolutionSuggestionStatus @default(PENDING)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now()) @updatedAt
+  conversation       Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user               User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project            Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  technicalProblem   TechnicalProblem @relation(fields: [technicalProblemId], references: [id], onDelete: Cascade)
+
+  // Um slot por contexto: uma nova sugestão substitui a referência anterior.
+  @@unique([userId, conversationId, projectId], map: "pending_solution_context_key")
+  @@index([userId, conversationId, status], map: "pending_solution_user_conversation_status_idx")
+  @@index([conversationId])
+  @@index([projectId])
+  @@index([technicalProblemId])
 }
 
 model HelpRequest {

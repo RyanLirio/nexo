@@ -13,7 +13,7 @@ export interface HelpRequestRecord {
 }
 
 export abstract class HelpRequestRepository {
-  abstract list(projectId?: string, status?: string): Promise<HelpRequestRecord[]>;
+  abstract list(projectId?: string, status?: string, accessibleProjectIds?: string[]): Promise<HelpRequestRecord[]>;
   abstract findById(id: string): Promise<HelpRequestRecord | null>;
   abstract create(data: {
     projectId: string;

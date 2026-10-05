@@ -4,8 +4,10 @@ import { ProjectsService } from './projects.service';
 import { ProjectRepository } from './project.repository';
 import { PrismaProjectRepository } from './prisma-project.repository';
 import { PrismaService } from '../prisma.service';
+import { AccessControlModule } from '../common/auth/access-control.module';
 
 @Module({
+  imports: [AccessControlModule],
   controllers: [ProjectsController],
   providers: [
     PrismaService,

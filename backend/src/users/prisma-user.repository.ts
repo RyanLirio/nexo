@@ -138,8 +138,10 @@ export class PrismaUserRepository extends UserRepository {
     userId: string,
     relation?: 'member' | 'responsible' | 'leader',
     status?: string,
+    viewerId?: string,
   ): Promise<UserProjectRecord[]> {
     const where: Record<string, unknown> = {};
+    if (viewerId) where.team = { members: { some: { userId: viewerId } } };
 
     if (status) {
       where.status = status;

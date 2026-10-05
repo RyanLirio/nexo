@@ -1,3 +1,5 @@
+import type { ProjectCreationTeam } from './chat-project-creation';
+
 export interface ProjectRecord {
   id: string;
   name: string;
@@ -27,8 +29,9 @@ export interface ProjectMemberRecord {
 }
 
 export abstract class ProjectRepository {
+  abstract findCreationTeams(userId: string): Promise<ProjectCreationTeam[]>;
   abstract findById(id: string): Promise<any | null>;
-  abstract list(filter?: { teamId?: string; status?: string; userId?: string }): Promise<any[]>;
+  abstract list(filter?: { teamId?: string; status?: string; userId?: string; viewerId?: string }): Promise<any[]>;
   abstract create(data: {
     teamId: string;
     name: string;

@@ -18,16 +18,18 @@ export class TechnicalProblemController {
 
   @Get()
   list(
+    @CurrentUser() user: AuthenticatedUser,
     @Query('query') query?: string,
     @Query('projectId') projectId?: string,
     @Query('status') status?: string,
     @Query('technology') technology?: string,
   ) {
-    return this.technicalProblems.list(query, projectId, { status, technology });
+    return this.technicalProblems.list(query, projectId, { status, technology }, user.id);
   }
 
   @Get('/api/v1/projects/:projectId/technical-problems')
   listByProject(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('projectId') projectId: string,
     @Query('status') status?: string,
     @Query('technology') technology?: string,
@@ -35,13 +37,12 @@ export class TechnicalProblemController {
     return this.technicalProblems.list(undefined, projectId, {
       status,
       technology,
-      onlyAuthorized: false,
-    });
+    }, user.id);
   }
 
   @Get(':id')
-  getById(@Param('id') id: string) {
-    return this.technicalProblems.getById(id);
+  getById(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.technicalProblems.getById(id, user.id);
   }
 
   @Post()

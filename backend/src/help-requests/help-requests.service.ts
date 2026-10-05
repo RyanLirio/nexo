@@ -7,12 +7,13 @@ import { fields, optionalText, requiredText } from '../request-fields';
 export class HelpRequestsService {
   constructor(private readonly helpRequestRepo: HelpRequestRepository) {}
 
-  async list(projectId?: string, status?: string): Promise<HelpRequestRecord[]> {
+  async list(projectId?: string, status?: string, accessibleProjectIds?: string[]): Promise<HelpRequestRecord[]> {
     if (projectId) {
       const exists = await this.helpRequestRepo.projectExists(projectId);
       if (!exists) throw new NotFoundException('Projeto não encontrado.');
     }
-    return this.helpRequestRepo.list(projectId, status);
+    if (status) HelpRequest.validateStatus(status);
+    return this.helpRequestRepo.list(projectId, status, accessibleProjectIds);
   }
 
   async getById(id: string): Promise<HelpRequestRecord> {
@@ -24,6 +25,9 @@ export class HelpRequestsService {
   async create(projectId: string, value: unknown, currentUserId?: string): Promise<HelpRequestRecord> {
     const body = fields(value);
     const requesterId = optionalText(body, 'requesterId', 100) || currentUserId;
+    if (currentUserId && requesterId !== currentUserId) {
+      throw new ForbiddenException('O solicitante deve ser o usuário autenticado.');
+    }
     if (!requesterId) {
       throw new BadRequestException('Identificador de solicitante ausente.');
     }

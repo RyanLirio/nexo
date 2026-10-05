@@ -1,5 +1,7 @@
 # Estado atual do Nexo — 19/09/2026
 
+> Registro histórico do kickoff. Para o backend atual, consulte [fluxo semântico verificado em 03/10/2026](backend-fluxo-semantico.md).
+
 ## O que funciona
 
 - Frontend navegável em `/`, `/login`, `/colaborador`, `/lider` e `/projetos/[id]`.

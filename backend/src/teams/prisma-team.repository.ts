@@ -8,8 +8,9 @@ export class PrismaTeamRepository extends TeamRepository {
     super();
   }
 
-  async list(): Promise<TeamRecord[]> {
+  async list(viewerId?: string): Promise<TeamRecord[]> {
     return this.prisma.team.findMany({
+      where: viewerId ? { members: { some: { userId: viewerId } } } : undefined,
       include: {
         _count: {
           select: {

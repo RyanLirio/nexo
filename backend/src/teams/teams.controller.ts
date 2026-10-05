@@ -1,14 +1,17 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { Roles } from '../common/auth/roles.decorator';
 import { TeamsService } from './teams.service';
+import { CurrentUser } from '../common/auth/current-user.decorator';
+import { AuthenticatedUser } from '../common/auth/auth.guard';
+import { AccessControlService } from '../common/auth/access-control.service';
 
 @Controller('api/v1/teams')
 export class TeamsController {
-  constructor(private readonly teamsService: TeamsService) {}
+  constructor(private readonly teamsService: TeamsService, private readonly access: AccessControlService) {}
 
   @Get()
-  async list() {
-    return this.teamsService.list();
+  async list(@CurrentUser() user: AuthenticatedUser) {
+    return this.teamsService.list(await this.access.isAdmin(user.id) ? undefined : user.id);
   }
 
   @Roles('ADMIN')
@@ -17,6 +20,7 @@ export class TeamsController {
     return this.teamsService.create(body);
   }
 
+  @Roles('ADMIN', 'MEMBER')
   @Get(':id')
   async getById(@Param('id') id: string) {
     return this.teamsService.getById(id);
@@ -35,6 +39,7 @@ export class TeamsController {
     return { ok: true };
   }
 
+  @Roles('ADMIN', 'MEMBER')
   @Get(':id/members')
   async listMembers(@Param('id') id: string) {
     return this.teamsService.listMembers(id);

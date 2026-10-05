@@ -1,68 +1,57 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
-import { AuthSession, readAuthSession } from '../../../lib/auth-session';
+import { useRouter } from 'next/navigation';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import { AuthSession, clearAuthSession, readAuthSession } from '../../../lib/auth-session';
+import { ChatMessage, conversationWelcome, isConversationResponse, parseHistory, requestError } from '../../../lib/conversation-data';
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
 
-interface ConversationResponse {
-  projects: Array<{
-    projectId: string;
-    summary: string;
-  }>;
-}
-
-type ChatMessage =
-  | { id: string; author: 'user'; text: string }
-  | { id: string; author: 'nexo'; text: string }
-  | { id: string; author: 'nexo'; response: ConversationResponse };
-
-function isConversationResponse(value: unknown): value is ConversationResponse {
-  if (!value || typeof value !== 'object' || !('projects' in value)) return false;
-
-  const projects = (value as { projects?: unknown }).projects;
-  return Array.isArray(projects) && projects.every((project) => (
-    project !== null
-    && typeof project === 'object'
-    && typeof (project as { projectId?: unknown }).projectId === 'string'
-    && typeof (project as { summary?: unknown }).summary === 'string'
-  ));
-}
-
-function errorMessage(body: unknown): string {
-  if (body && typeof body === 'object' && 'message' in body) {
-    const message = (body as { message?: unknown }).message;
-    if (typeof message === 'string') return message;
-    if (Array.isArray(message)) return message.join(' ');
-  }
-
-  return 'Não foi possível analisar a mensagem. Tente novamente.';
-}
-
 export default function ConversationPage() {
+  const router = useRouter();
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      author: 'nexo',
-      text: 'Conte como foi seu trabalho. Você pode falar de mais de um projeto na mesma mensagem.',
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const sending = useRef(false);
+  const messageEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setSession(readAuthSession());
-  }, []);
+    const current = readAuthSession();
+    setSession(current);
+    setMessages([conversationWelcome(current?.user.role)]);
+    if (!current) { setHistoryLoading(false); return; }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    let mounted = true;
+    async function loadHistory() {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/v1/conversations/current`, {
+          headers: { Authorization: `Bearer ${current!.accessToken}` }, signal: controller.signal,
+        });
+        if (response.status === 401) { clearAuthSession(); router.replace('/login'); return; }
+        if (!response.ok) throw new Error('Não foi possível carregar suas mensagens anteriores. Recarregue para tentar novamente.');
+        const history = parseHistory(await response.json());
+        if (mounted && history.length) setMessages(history);
+      } catch {
+        if (mounted) setError('Não foi possível carregar suas mensagens anteriores. Recarregue para tentar novamente.');
+      } finally { window.clearTimeout(timeout); if (mounted) setHistoryLoading(false); }
+    }
+    void loadHistory();
+    return () => { mounted = false; window.clearTimeout(timeout); controller.abort(); };
+  }, [router]);
+  useEffect(() => { messageEnd.current?.scrollIntoView({ block: 'nearest' }); }, [messages, loading]);
 
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = text.trim();
-    if (!message || loading) return;
+    if (!message || sending.current || historyLoading) return;
+    sending.current = true;
 
     const currentSession = readAuthSession();
-    const messageId = Date.now().toString();
+    const messageId = crypto.randomUUID();
 
     setMessages((current) => [
       ...current,
@@ -75,6 +64,8 @@ export default function ConversationPage() {
     if (!currentSession) {
       setError('Sua sessão não está disponível. Entre novamente para continuar.');
       setLoading(false);
+      sending.current = false;
+      router.replace('/login');
       return;
     }
 
@@ -86,25 +77,36 @@ export default function ConversationPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ message }),
+        signal: AbortSignal.timeout(120_000),
       });
       const body: unknown = await response.json().catch(() => null);
 
+      if (response.status === 401) {
+        clearAuthSession();
+        setSession(null);
+        router.replace('/login');
+        return;
+      }
+
       if (!response.ok) {
-        throw new Error(errorMessage(body));
+        throw new Error(requestError(response.status));
       }
 
       if (!isConversationResponse(body)) {
-        throw new Error('O backend retornou uma resposta em formato inesperado.');
+        throw new Error('Não foi possível ler a resposta do Nexo. Tente novamente.');
       }
 
       setMessages((current) => [
-        ...current,
-        { id: `${messageId}-nexo`, author: 'nexo', response: body },
+        ...current.filter((item) => item.id !== body.assistantMessage.id).map(item => item.id === `${messageId}-user` ? { ...item, id: body.messageId } : item),
+        { id: body.assistantMessage.id, author: 'nexo', text: body.assistantMessage.content },
       ]);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível analisar a mensagem. Tente novamente.');
+      setError(cause instanceof DOMException && cause.name === 'TimeoutError'
+        ? 'O Nexo demorou para responder. Recarregue para conferir se a mensagem foi registrada antes de reenviar.'
+        : cause instanceof TypeError ? 'Não foi possível conectar ao Nexo. Tente novamente.' : cause instanceof Error ? cause.message : 'Não foi possível processar sua mensagem. Tente novamente.');
     } finally {
       setLoading(false);
+      sending.current = false;
     }
   }
 
@@ -125,13 +127,14 @@ export default function ConversationPage() {
             <span className="chat-symbol" aria-hidden="true">✳</span>
             <span>
               <strong id="conversation-panel-title">Nexo</strong>
-              <small>Conversa geral · resposta real do backend</small>
+              <small>Seu contexto de trabalho</small>
             </span>
           </div>
-          <span className="panel-badge"><span className="live-dot" /> IA conectada</span>
+          <span className="panel-badge">Conversa de hoje</span>
         </div>
 
         <div className="chat-messages" aria-live="polite">
+          {historyLoading && <p role="status">Carregando suas mensagens de hoje…</p>}
           {messages.map((message) => {
             const isUser = message.author === 'user';
             return (
@@ -139,10 +142,9 @@ export default function ConversationPage() {
                 <span className={`message-avatar ${isUser ? 'message-avatar-user' : ''}`} aria-hidden="true">
                   {isUser ? userInitial : '✳'}
                 </span>
-                <div className={`message ${'response' in message ? 'message-response' : ''}`}>
+                <div className="message">
                   <strong>{isUser ? userName : 'Nexo'}</strong>
-                  {'text' in message && <p>{message.text}</p>}
-                  {'response' in message && <pre>{JSON.stringify(message.response, null, 2)}</pre>}
+                  <p>{message.text}</p>
                 </div>
               </div>
             );
@@ -151,9 +153,10 @@ export default function ConversationPage() {
           {loading && (
             <div className="message-row" role="status">
               <span className="message-avatar" aria-hidden="true">✳</span>
-              <div className="message message-loading"><strong>Nexo</strong><p>Analisando a mensagem por projeto…</p></div>
+              <div className="message message-loading"><strong>Nexo</strong><p>Nexo está analisando…</p></div>
             </div>
           )}
+          <div ref={messageEnd} />
         </div>
 
         {error && <p className="conversation-error" role="alert">{error}</p>}
@@ -165,14 +168,15 @@ export default function ConversationPage() {
             value={text}
             onChange={(event) => setText(event.target.value)}
             placeholder="Ex.: Hoje finalizei a integração bancária e comecei a revisar o Portal..."
-            disabled={loading}
+            disabled={loading || historyLoading}
+            maxLength={10000}
             autoComplete="off"
           />
-          <button className="button" type="submit" disabled={!text.trim() || loading}>
+          <button className="button" type="submit" disabled={!text.trim() || loading || historyLoading}>
             {loading ? 'Enviando…' : 'Enviar'} <span aria-hidden="true">↗</span>
           </button>
         </form>
-        <p className="chat-note">Esta integração não salva histórico. Cada resposta abaixo vem diretamente do endpoint de conversa.</p>
+        <p className="chat-note">Suas mensagens ajudam o Nexo a manter o contexto dos projetos durante o trabalho.</p>
       </section>
     </main>
   );

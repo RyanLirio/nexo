@@ -14,16 +14,43 @@ export interface TechnicalProblemRecord {
   createdAt: Date;
   updatedAt: Date;
   author?: { id: string; name: string };
-  project?: { id: string; name: string };
+  project?: { id: string; name: string; teamId: string };
+}
+
+export interface TechnicalProblemFilter {
+  status?: string;
+  technology?: string;
+  onlyAuthorized?: boolean;
+}
+
+export interface KnowledgeViewer {
+  userId: string;
+  isAdmin: boolean;
+}
+
+export type SharedTechnicalProblem = Pick<TechnicalProblemRecord,
+  'id' | 'projectId' | 'title' | 'problem' | 'technology' | 'solution' |
+  'sharingAuthorizedAt' | 'createdAt' | 'author'>;
+
+export interface SimilarTechnicalProblem {
+  id: string;
+  projectId: string;
+  problem: string;
+  solution: string;
+  technology: string | null;
+  author: { id: string; name: string };
+  similarity: number;
 }
 
 export abstract class TechnicalProblemRepository {
   abstract list(
-    query?: string,
-    projectId?: string,
-    filter?: { status?: string; technology?: string },
-  ): Promise<any[]>;
-  abstract findById(id: string): Promise<any | null>;
+    query: string | undefined,
+    projectId: string | undefined,
+    filter: TechnicalProblemFilter | undefined,
+    viewer: KnowledgeViewer,
+  ): Promise<SharedTechnicalProblem[]>;
+  abstract findById(id: string): Promise<TechnicalProblemRecord | null>;
+  abstract findProjectTeamId(projectId: string): Promise<string | null>;
 
   abstract create(data: {
     projectId: string;
@@ -41,5 +68,14 @@ export abstract class TechnicalProblemRepository {
   abstract findSourceCheckIn(id: string): Promise<{ projectId: string } | null>;
   abstract findSourceHelpRequest(id: string): Promise<{ projectId: string } | null>;
   abstract updateSolution(id: string, solution: string): Promise<TechnicalProblemRecord>;
+  abstract hasProblemEmbedding(id: string): Promise<boolean>;
+  abstract setProblemEmbedding(id: string, embedding: number[]): Promise<boolean>;
+  abstract listWithoutEmbedding(): Promise<Array<{ id: string; problem: string }>>;
+  abstract searchSimilar(
+    userId: string,
+    embedding: number[],
+    limit?: number,
+    threshold?: number,
+  ): Promise<SimilarTechnicalProblem[]>;
 }
 

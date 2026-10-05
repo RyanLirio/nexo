@@ -7,8 +7,8 @@ import { fields, optionalText, requiredText } from '../request-fields';
 export class TeamsService {
   constructor(private readonly teamRepo: TeamRepository) {}
 
-  async list(): Promise<TeamRecord[]> {
-    return this.teamRepo.list();
+  async list(viewerId?: string): Promise<TeamRecord[]> {
+    return this.teamRepo.list(viewerId);
   }
 
   async getById(id: string): Promise<TeamRecord> {

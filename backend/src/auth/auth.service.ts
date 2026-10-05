@@ -9,6 +9,7 @@ import {
 import * as jwt from 'jsonwebtoken';
 import { UserRepository } from '../users/user.repository';
 import { GoogleTokenVerifier } from './google-verifier';
+import { resolveJwtSecret } from '../common/auth/jwt-config';
 
 export interface AuthResponse {
   accessToken: string;
@@ -30,7 +31,7 @@ export class AuthService {
     private readonly googleVerifier: GoogleTokenVerifier,
     @Optional() jwtSecret?: string,
   ) {
-    this.jwtSecret = jwtSecret || process.env.JWT_SECRET || 'nexo_default_jwt_secret_dev';
+    this.jwtSecret = resolveJwtSecret(jwtSecret);
   }
 
   async loginWithGoogle(idToken: string): Promise<AuthResponse> {
@@ -41,11 +42,11 @@ export class AuthService {
     let payload;
     try {
       payload = await this.googleVerifier.verify(idToken);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof HttpException) {
         throw err;
       }
-      throw new UnauthorizedException(`Credencial do Google inválida: ${err.message}`);
+      throw new UnauthorizedException('Credencial do Google inválida. Tente entrar novamente.');
     }
 
     const user = await this.userRepository.findByEmail(payload.email);
@@ -123,7 +124,10 @@ export class AuthService {
 
   verifyToken(token: string): { sub: string; email: string } {
     try {
-      return jwt.verify(token, this.jwtSecret) as { sub: string; email: string };
+      const payload = jwt.verify(token, this.jwtSecret, { algorithms: ['HS256'] });
+      if (typeof payload === 'string' || typeof payload.sub !== 'string' || !payload.sub.trim()
+        || typeof payload.email !== 'string') throw new Error('Invalid JWT payload');
+      return { sub: payload.sub, email: payload.email };
     } catch {
       throw new UnauthorizedException('Token de autenticação inválido ou expirado.');
     }

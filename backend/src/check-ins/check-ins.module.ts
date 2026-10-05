@@ -4,8 +4,10 @@ import { CheckInsService } from './check-ins.service';
 import { CheckInRepository } from './check-in.repository';
 import { PrismaCheckInRepository } from './prisma-check-in.repository';
 import { PrismaService } from '../prisma.service';
+import { ProjectsModule } from '../projects/projects.module';
 
 @Module({
+  imports: [ProjectsModule],
   controllers: [CheckInsController],
   providers: [
     PrismaService,

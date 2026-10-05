@@ -60,8 +60,14 @@ export class CheckIn {
     }
 
     let messageIds: string[] | undefined;
+    if (data.messageIds !== undefined && !Array.isArray(data.messageIds)) {
+      throw new BadRequestException('messageIds deve ser uma lista de identificadores.');
+    }
     if (Array.isArray(data.messageIds)) {
-      messageIds = data.messageIds.filter((m): m is string => typeof m === 'string' && !!m.trim());
+      if (data.messageIds.length > 50) {
+        throw new BadRequestException('Informe até 50 identificadores de mensagens válidos.');
+      }
+      messageIds = [...new Set(data.messageIds.filter((m): m is string => typeof m === 'string' && !!m.trim() && m.length <= 100).map(m => m.trim()))];
     }
 
     return {

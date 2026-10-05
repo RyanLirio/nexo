@@ -1,6 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { TechnicalProblemRecord, TechnicalProblemRepository } from './technical-problem.repository';
+import { Prisma } from '../generated/prisma/client';
+import {
+  KnowledgeViewer,
+  SharedTechnicalProblem,
+  SimilarTechnicalProblem,
+  TechnicalProblemFilter,
+  TechnicalProblemRecord,
+  TechnicalProblemRepository,
+} from './technical-problem.repository';
+
+const EMBEDDING_DIMENSIONS = 1536;
+const DEFAULT_SIMILARITY_LIMIT = 5;
+const DEFAULT_SIMILARITY_THRESHOLD = 0.78;
 
 @Injectable()
 export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository {
@@ -9,12 +21,15 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
   }
 
   async list(
-    query?: string,
-    projectId?: string,
-    filter?: { status?: string; technology?: string; onlyAuthorized?: boolean },
-  ): Promise<any[]> {
+    query: string | undefined,
+    projectId: string | undefined,
+    filter: TechnicalProblemFilter | undefined,
+    viewer: KnowledgeViewer,
+  ): Promise<SharedTechnicalProblem[]> {
     const term = query?.trim();
-    const where: Record<string, unknown> = {};
+    const where: Prisma.TechnicalProblemWhereInput = viewer.isAdmin
+      ? {}
+      : { project: { team: { members: { some: { userId: viewer.userId } } } } };
 
     if (filter?.onlyAuthorized !== false) {
       where.sharingAuthorizedAt = { not: null };
@@ -59,12 +74,12 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
   }
 
 
-  async findById(id: string): Promise<any | null> {
+  async findById(id: string): Promise<TechnicalProblemRecord | null> {
     return this.prisma.technicalProblem.findUnique({
       where: { id },
       include: {
         author: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true, teamId: true } },
       },
     });
   }
@@ -90,7 +105,7 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
         sourceCheckInId: data.sourceCheckInId,
         sourceHelpRequestId: data.sourceHelpRequestId,
       },
-    }) as unknown as TechnicalProblemRecord;
+    });
   }
 
   async authorize(id: string, authorId: string, authorizedAt: Date): Promise<TechnicalProblemRecord> {
@@ -100,7 +115,7 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
         sharingAuthorizedBy: authorId,
         sharingAuthorizedAt: authorizedAt,
       },
-    }) as unknown as TechnicalProblemRecord;
+    });
   }
 
   async projectExists(projectId: string): Promise<boolean> {
@@ -109,6 +124,13 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
       select: { id: true },
     });
     return !!project;
+  }
+
+  async findProjectTeamId(projectId: string): Promise<string | null> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId }, select: { teamId: true },
+    });
+    return project?.teamId ?? null;
   }
 
   async isProjectMember(projectId: string, userId: string): Promise<boolean> {
@@ -139,7 +161,93 @@ export class PrismaTechnicalProblemRepository extends TechnicalProblemRepository
     return this.prisma.technicalProblem.update({
       where: { id },
       data: { solution },
-    }) as unknown as TechnicalProblemRecord;
+    });
+  }
+
+  async searchSimilar(
+    userId: string,
+    embedding: number[],
+    limit = DEFAULT_SIMILARITY_LIMIT,
+    threshold = DEFAULT_SIMILARITY_THRESHOLD,
+  ): Promise<SimilarTechnicalProblem[]> {
+    const vector = this.toVector(embedding);
+
+    return this.prisma.$queryRaw<SimilarTechnicalProblem[]>`
+      WITH query_embedding AS (
+        SELECT ${vector}::vector AS value
+      ), viewer AS (
+        SELECT id, role
+        FROM "User"
+        WHERE id = ${userId}
+      )
+      SELECT
+        problem.id,
+        problem."projectId",
+        problem.problem,
+        problem.solution,
+        problem.technology,
+        json_build_object('id', author.id, 'name', author.name) AS author,
+        1 - (problem."problemEmbedding" <=> query_embedding.value) AS similarity
+      FROM "TechnicalProblem" AS problem
+      CROSS JOIN query_embedding
+      CROSS JOIN viewer
+      INNER JOIN "User" AS author ON author.id = problem."authorId"
+      INNER JOIN "Project" AS project ON project.id = problem."projectId"
+      WHERE problem."problemEmbedding" IS NOT NULL
+        AND problem."sharingAuthorizedAt" IS NOT NULL
+        AND problem.solution IS NOT NULL
+        AND BTRIM(problem.solution) <> ''
+        AND (
+          viewer.role = 'ADMIN'
+          OR EXISTS (
+            SELECT 1
+            FROM "TeamMember" AS membership
+            WHERE membership."teamId" = project."teamId"
+              AND membership."userId" = viewer.id
+          )
+        )
+        AND 1 - (problem."problemEmbedding" <=> query_embedding.value) >= ${threshold}
+      ORDER BY similarity DESC
+      LIMIT ${limit}
+    `;
+  }
+
+  async hasProblemEmbedding(id: string): Promise<boolean> {
+    const rows = await this.prisma.$queryRaw<Array<{ present: boolean }>>`
+      SELECT "problemEmbedding" IS NOT NULL AS present
+      FROM "TechnicalProblem" WHERE id = ${id}
+    `;
+    return rows[0]?.present ?? false;
+  }
+
+  async setProblemEmbedding(id: string, embedding: number[]): Promise<boolean> {
+    const vector = this.toVector(embedding);
+    const changed = await this.prisma.$executeRaw`
+      UPDATE "TechnicalProblem"
+      SET "problemEmbedding" = ${vector}::vector(1536)
+      WHERE id = ${id} AND "problemEmbedding" IS NULL
+    `;
+    return changed === 1;
+  }
+
+  async listWithoutEmbedding(): Promise<Array<{ id: string; problem: string }>> {
+    return this.prisma.$queryRaw`
+      SELECT id, problem FROM "TechnicalProblem"
+      WHERE "problemEmbedding" IS NULL ORDER BY "createdAt", id
+    `;
+  }
+
+  private toVector(embedding: number[]): string {
+    if (
+      embedding.length !== EMBEDDING_DIMENSIONS
+      || embedding.some((value) => !Number.isFinite(value))
+    ) {
+      throw new Error(
+        `O embedding deve possuir ${EMBEDDING_DIMENSIONS} valores numéricos.`,
+      );
+    }
+
+    return `[${embedding.join(',')}]`;
   }
 }
 

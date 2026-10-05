@@ -1,6 +1,6 @@
 # Nexo
 
-Projeto acadêmico de Programação IV do curso de Ciência da Computação da UNOESC. Depois do kickoff estrutural, o repositório passou a conter um protótipo navegável, um modelo de dados v2 e uma primeira API de domínio.
+Projeto acadêmico de Programação IV do curso de Ciência da Computação da UNOESC. O MVP integra conversa persistida, CheckIns estruturados, recuperação de soluções técnicas autorizadas e consulta do contexto da equipe.
 
 ## Problema e proposta
 
@@ -8,7 +8,7 @@ Em equipes remotas, poucos líderes podem acompanhar muitas pessoas que particip
 
 O Nexo propõe usar conversas sobre o dia de trabalho para organizar atualizações, registrar soluções técnicas autorizadas e conectar colegas que precisam de ajuda. A proposta é apoiar a colaboração, sem monitorar atividades ou avaliar produtividade individual.
 
-O fluxo planejado para o MVP é: check-in conversacional → registro estruturado → identificação de dificuldade → consulta de problemas técnicos → sugestão de solução ou colega → solicitação de ajuda.
+O fluxo implementado é: conversa geral → separação por projeto ativo → CheckIn estruturado → classificação técnica → busca semântica → oferta de solução → aceite/recusa. O líder consulta as atualizações por membro e projeto. `HelpRequest` continua existindo, mas não é criado automaticamente por esse fluxo.
 
 ## Integrantes
 
@@ -19,12 +19,13 @@ O fluxo planejado para o MVP é: check-in conversacional → registro estruturad
 ## Tecnologias
 
 - **Next.js 16 + React 19 + TypeScript:** frontend, responsável pelas páginas que as pessoas acessam.
-- **NestJS 11 + TypeScript:** backend, responsável pela API e, futuramente, pelas regras de negócio e permissões.
-- **PostgreSQL 17 + pgvector:** banco relacional e armazenamento opcional de vetores sem geração automática nesta etapa.
+- **NestJS 11 + TypeScript:** API, regras de negócio e autorização por equipe/papel.
+- **PostgreSQL 17 + pgvector:** persistência e busca por similaridade de problemas técnicos; embeddings opcionais de 1536 dimensões.
+- **OpenAI + Zod:** extração estruturada com `gpt-5.4-mini` e embeddings de `problem` com `text-embedding-3-small`.
 - **Prisma 7:** descreve o modelo do banco, gera um cliente TypeScript e gerencia migrations. O adaptador `@prisma/adapter-pg` usa o driver `pg` para conectar ao PostgreSQL.
 - **Git e GitHub:** histórico do projeto, hospedagem do repositório e acompanhamento das issues.
 
-As versões exatas das dependências ficam nos arquivos `package-lock.json`. Não usamos biblioteca de componentes, autenticação ou IA nesta etapa.
+As versões exatas das dependências ficam nos arquivos `package-lock.json`. O login usa Google Identity Services e JWT; não há biblioteca de componentes de UI.
 
 ## Estrutura
 
@@ -93,7 +94,7 @@ O Compose lê o `.env` da raiz. O backend e o Prisma carregam `backend/.env` com
 
 `DATABASE_URL` informa usuário, senha, endereço, porta e nome do banco. Se alterar os valores da raiz, ajuste essa URL também. Caracteres especiais em usuário ou senha precisam ser codificados na URL. `PORT` define a porta do backend, inicialmente 3001.
 
-`NEXT_PUBLIC_API_BASE_URL` fica reservado para a integração futura. Variáveis com `NEXT_PUBLIC_` podem aparecer no navegador: nunca coloque segredos nelas. Reinicie os servidores após mudar configurações; valores públicos do Next.js também exigem nova compilação para produção.
+`NEXT_PUBLIC_API_BASE_URL` conecta o frontend à API real. Variáveis com `NEXT_PUBLIC_` podem aparecer no navegador: nunca coloque segredos nelas. Configure `OPENAI_API_KEY` apenas no backend. Reinicie os servidores após mudar configurações; valores públicos do Next.js também exigem nova compilação para produção.
 
 Para o login Google, crie uma credencial OAuth 2.0 do tipo **Aplicativo da Web** no Google Cloud, adicione `http://localhost:3000` às origens JavaScript autorizadas e use o mesmo identificador em `GOOGLE_CLIENT_ID` (backend) e `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (frontend). O identificador do cliente é público; não coloque o segredo OAuth no frontend. Defina `SEED_MEMBER_EMAIL` com o e-mail Google que poderá entrar e execute o seed novamente. O Nexo mantém a política de permitir somente usuários previamente cadastrados.
 
@@ -169,7 +170,7 @@ Abra [http://localhost:3001/health](http://localhost:3001/health). A resposta es
 
 ### Dados fictícios para desenvolvimento
 
-Depois de aplicar as migrations em um banco de desenvolvimento, execute `npm run seed` dentro de `backend`. O comando compila o projeto e cria/atualiza uma organização, equipe, três pessoas, três projetos, check-ins, duas soluções (uma autorizada e outra privada) e um pedido de ajuda. Os identificadores são fixos para que a execução seja repetível. Não execute o seed em um banco com dados de produção.
+Depois de aplicar as migrations em um banco de desenvolvimento, execute `npm run seed` dentro de `backend`. O comando cria/atualiza uma equipe, quatro pessoas (ADMIN, LEADER e dois MEMBER), dois projetos, conversa/mensagens, CheckIns, problemas técnicos compartilhados/privados e pedido de ajuda. Os IDs são fixos; reexecutar o seed pode sobrescrever alterações desses registros. Não execute em produção nem apenas para atualizar o banco já usado na demonstração.
 
 Para compilar e executar a versão compilada:
 
@@ -188,7 +189,7 @@ npm ci
 npm run dev
 ```
 
-Abra [http://localhost:3000](http://localhost:3000). O frontend usa a API para autenticar com Google; as demais telas ainda usam dados fictícios.
+Abra [http://localhost:3000](http://localhost:3000). Login, `/colaborador`, `/colaborador/conversa`, `/lider` e `/projetos/:id` usam a API real. A prévia da página inicial é apenas uma ilustração identificada como tal.
 
 Para conferir a compilação:
 
@@ -202,11 +203,11 @@ Pare o servidor de desenvolvimento antes de executar `npm start`, pois ambos usa
 
 ## Modelo e estado atual
 
-O modelo v2 adiciona `Organization` e `OrganizationMember`, liga equipes à organização e relaciona soluções técnicas ao projeto e, opcionalmente, ao check-in de origem. Veja [o modelo explicado](docs/modelo-dados-v2.md) e [o estado atual](docs/estado-atual.md). A migration v2 deve ser revisada e aplicada em um banco de desenvolvimento antes do seed.
+O schema atual usa `User`, `Team`/`TeamMember`, `Project`/`ProjectMember`, `Conversation`/`Message`, `CheckIn`/`CheckInMessage`, `TechnicalProblem`, `PendingTechnicalSolutionSuggestion` e `HelpRequest`. Migrations antigas permanecem preservadas; o schema Prisma é a referência do modelo vigente. Os documentos iniciais de modelo/backlog são históricos.
 
-A API oferece rotas iniciais para projetos, check-ins, problemas técnicos e pedidos de ajuda; seus contratos estão em [docs/estado-atual.md](docs/estado-atual.md).
+A API oferece projetos, histórico filtrável de CheckIns, visão do líder, problemas técnicos autorizados e `POST /api/v1/conversations/message`. Veja [o roteiro atual do MVP](docs/demo-mvp.md) para preparação e validação ponta a ponta.
 
-O frontend usa a API no login e continua usando dados fictícios nas demais telas. Não há IA nem MCP implementados. As decisões de interface estão documentadas em [pesquisa de UX](docs/ux-research.md) e [auditoria](docs/ux-audit.md).
+Conversations e Messages originais são persistidas. O chat mostra respostas textuais reais, sem JSON de diagnóstico, mas ainda não recupera o histórico visual após recarregar a página. A visão do projeto mostra o último CheckIn por membro e até 50 atualizações anteriores. Embeddings são gerados no ciclo de criação/enriquecimento do TechnicalProblem; o embedding da mensagem consultada é temporário. MCP está fora deste MVP. As decisões de interface estão documentadas em [pesquisa de UX](docs/ux-research.md) e [auditoria](docs/ux-audit.md).
 
 ## Onde continuar
 
@@ -214,7 +215,7 @@ O frontend usa a API no login e continua usando dados fictícios nas demais tela
 - Novos endpoints e regras: módulos em `backend/src`, registrados em `app.module.ts` conforme surgirem as funcionalidades.
 - Modelo de dados: `backend/prisma/schema.prisma`, acompanhado por novas migrations.
 - Acesso ao banco: reutilizar `PrismaService`; exportá-lo por um módulo próprio quando houver outros módulos que precisem dele.
-- Integração entre as aplicações: usar a URL pública do frontend e configurar CORS no backend para a origem autorizada quando essa integração for implementada.
+- Integração entre as aplicações: manter `NEXT_PUBLIC_API_BASE_URL` e `FRONTEND_URL` coerentes com as portas/origens utilizadas.
 
 ## Próximos passos e entrega
 

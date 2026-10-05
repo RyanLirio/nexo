@@ -43,13 +43,13 @@ export class AiToolsService {
 
     switch (name) {
       case 'get_user_projects':
-        return this.projectsService.list({ userId, status: 'ACTIVE' });
+        return this.projectsService.list({ userId, status: 'ACTIVE' }, userId);
 
       case 'get_project_context': {
         if (!projectId) {
           throw new BadRequestException('Identificador de projeto ausente.');
         }
-        const project = await this.projectsService.getById(projectId);
+        const project = await this.projectsService.getById(projectId, userId);
         return {
           id: project.id,
           name: project.name,
@@ -72,7 +72,10 @@ export class AiToolsService {
       }
 
       case 'get_recent_messages': {
-        const limit = typeof args.limit === 'number' && args.limit > 0 ? args.limit : 10;
+        const limit = args.limit === undefined ? 10 : args.limit;
+        if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+          throw new BadRequestException('Informe um limite inteiro de 1 a 50 mensagens.');
+        }
         const messages = await this.conversationRepo.findRecentMessages(userId, limit);
         return { messages };
       }
@@ -80,7 +83,14 @@ export class AiToolsService {
 
       case 'search_knowledge_base': {
         const query = typeof args.query === 'string' ? args.query : '';
-        return this.technicalProblemService.list(query, projectId);
+        return this.technicalProblemService.list(query, projectId, undefined, userId);
+      }
+
+      case 'search_similar_technical_problems': {
+        if (typeof args.problem !== 'string' || !args.problem.trim()) {
+          throw new BadRequestException('Informe um problema técnico concreto em problem.');
+        }
+        return this.technicalProblemService.searchSimilarByText(args.problem, userId);
       }
 
       case 'save_checkin': {

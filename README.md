@@ -8,6 +8,9 @@ O Nexo é um projeto acadêmico da disciplina de **Programação IV**, do curso 
 
 Este documento descreve a implementação atual, seu modelo de dados e a preparação de uma demonstração local. O schema Prisma, os controllers, os serviços e os arquivos de configuração versionados são a fonte de referência.
 
+## Vídeo de apresentação
+https://www.youtube.com/watch?v=tVuOadn8Tg0
+
 ## Problema
 
 Em equipes com várias pessoas e projetos simultâneos, o contexto fica espalhado entre mensagens, reuniões, conversas, ferramentas e pessoas. Isso dificulta responder:
